@@ -21,6 +21,7 @@ crate-type = ["cdylib", "rlib"]
 capnagent-core = { path = "../capnagent-core" }
 wasm-bindgen = "0.2"
 serde-wasm-bindgen = "0.6"
+serde = { version = "1", features = ["derive"] }
 serde_json = "=1.0.140"
 
 # `getrandom` with the `js` feature is required when wasm-bindgen-targeted
