@@ -1,0 +1,302 @@
+/**
+ * Public API for the `@capnagent` package.
+ *
+ * Wraps the wasm-bindgen-generated classes in `./wasm` (which currently
+ * re-exports `./__wasm-stub`) and presents an idiomatic TypeScript surface:
+ *
+ *   - All field names are camelCase. snake_case from the WASM boundary is
+ *     translated in `./translate` and never leaks past these wrappers.
+ *   - Errors thrown by the WASM layer are mapped into the typed
+ *     `CapabilityError` hierarchy. The mapping table lives in
+ *     `mapWasmError` below; see the comment there for the rules.
+ *   - `init()` is idempotent and required. Every other API throws a
+ *     descriptive `CapabilityError` if used before `init()` has resolved.
+ *   - WASM `free()` is intentionally not exposed. v0 leans on JS GC; v0.1
+ *     will adopt explicit-resource-management once `using` is stable.
+ *
+ * See `docs/WEEK3_SPEC.md` §3.2 for the locked contract.
+ */
+
+import { CapabilityAuditError, CapabilityChainError, CapabilityError } from "./errors.js";
+import { rawReceiptToReceipt, receiptToRaw } from "./translate.js";
+import type { Context, Receipt } from "./types.js";
+import * as wasm from "./wasm.js";
+
+export { CapabilityAuditError, CapabilityChainError, CapabilityError };
+export type { Context, Receipt };
+
+// ---------------------------------------------------------------------------
+// init() — idempotent, required-before-use
+// ---------------------------------------------------------------------------
+
+let initPromise: Promise<void> | null = null;
+let ready = false;
+
+/**
+ * Initialize the underlying WASM module. Idempotent: calling more than
+ * once returns the same in-flight promise on parallel calls and a resolved
+ * promise once initialization has succeeded.
+ *
+ * Must be called and awaited before any other API in this package is used.
+ */
+export function init(): Promise<void> {
+  if (initPromise) return initPromise;
+  initPromise = (async () => {
+    // The wasm-bindgen `init()` is synchronous in the §3.1 contract; wrapping
+    // in an async IIFE keeps the public signature `Promise<void>` for
+    // forward-compat with bundler-target builds where init becomes async.
+    wasm.init();
+    ready = true;
+  })();
+  return initPromise;
+}
+
+function ensureReady(): void {
+  if (!ready) {
+    throw new CapabilityError(
+      "capnagent: init() must be called and awaited before using any other API",
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Error mapping
+// ---------------------------------------------------------------------------
+
+/**
+ * Map a wasm-bindgen-thrown `Error` into the typed `CapabilityError`
+ * hierarchy.
+ *
+ * v0 uses a two-stage decision:
+ *
+ *   1. **Operation context** — the wrapper method already knows what kind
+ *      of failure is expected. `Auditor.verify` always maps to
+ *      `CapabilityAuditError`; `Verifier.verify` (no context) always maps
+ *      to `CapabilityChainError`.
+ *   2. **Message inspection** — `Verifier.verifyWithContext` can throw
+ *      either, so it sniffs the message for "audit"/"signature" keywords
+ *      to pick `CapabilityAuditError`, falling back to
+ *      `CapabilityChainError`.
+ *
+ * The wasm-bindgen errors come back as plain `Error` instances. When v0.1
+ * adds typed error variants on the WASM side, replace the message sniff
+ * with `instanceof` checks; the public hierarchy stays the same.
+ */
+type ErrorKind = "chain" | "audit" | "either" | "generic";
+
+function mapWasmError(e: unknown, kind: ErrorKind): never {
+  const message = e instanceof Error ? e.message : String(e);
+
+  if (kind === "audit") {
+    throw new CapabilityAuditError(message);
+  }
+  if (kind === "chain") {
+    throw new CapabilityChainError(message);
+  }
+  if (kind === "either") {
+    const lower = message.toLowerCase();
+    if (lower.includes("audit") || lower.includes("signature") || lower.includes("tamper")) {
+      throw new CapabilityAuditError(message);
+    }
+    throw new CapabilityChainError(message);
+  }
+  throw new CapabilityError(message);
+}
+
+// ---------------------------------------------------------------------------
+// Public class wrappers
+// ---------------------------------------------------------------------------
+
+/**
+ * A capability token: identifier, caveats, and an HMAC-chained signature.
+ * Construct one via `Issuer.fromKey(...).issue(...)` or recover one from
+ * its serialized form via `Capability.parse`.
+ */
+export class Capability {
+  /** @internal — wrapper's handle on the wasm-bindgen instance. */
+  readonly _inner: wasm.Capability;
+
+  /** @internal */
+  constructor(inner: wasm.Capability) {
+    this._inner = inner;
+  }
+
+  /** Decode a previously-serialized capability token. */
+  static parse(token: string): Capability {
+    ensureReady();
+    try {
+      return new Capability(wasm.Capability.parse(token));
+    } catch (e) {
+      mapWasmError(e, "generic");
+    }
+  }
+
+  /** Encode this capability as a URL-safe, unpadded base64 token. */
+  serialize(): string {
+    ensureReady();
+    try {
+      return this._inner.serialize();
+    } catch (e) {
+      mapWasmError(e, "generic");
+    }
+  }
+
+  /**
+   * Append a caveat, producing a strictly narrower capability. Anyone
+   * holding the parent can do this; nobody can broaden it.
+   */
+  attenuate(predicate: string): Capability {
+    ensureReady();
+    try {
+      return new Capability(this._inner.attenuate(predicate));
+    } catch (e) {
+      mapWasmError(e, "generic");
+    }
+  }
+
+  /** Public identifier of the capability (what authority it grants). */
+  get identifier(): string {
+    ensureReady();
+    return this._inner.identifier;
+  }
+}
+
+/** Builder returned from `Issuer.issue`. Append caveats, then `build`. */
+export class CapabilityBuilder {
+  /** @internal */
+  readonly _inner: wasm.CapabilityBuilder;
+
+  /** @internal */
+  constructor(inner: wasm.CapabilityBuilder) {
+    this._inner = inner;
+  }
+
+  /** Append a caveat predicate to the in-progress capability. */
+  caveat(predicate: string): CapabilityBuilder {
+    ensureReady();
+    try {
+      // wasm-bindgen returns the same builder; re-wrap for type cleanliness.
+      return new CapabilityBuilder(this._inner.caveat(predicate));
+    } catch (e) {
+      mapWasmError(e, "generic");
+    }
+  }
+
+  /** Finalize the builder into a `Capability`. */
+  build(): Capability {
+    ensureReady();
+    try {
+      return new Capability(this._inner.build());
+    } catch (e) {
+      mapWasmError(e, "generic");
+    }
+  }
+}
+
+/** Mints fresh capabilities from a root key. Construct via `fromKey`. */
+export class Issuer {
+  /** @internal */
+  readonly _inner: wasm.Issuer;
+
+  /** @internal */
+  constructor(inner: wasm.Issuer) {
+    this._inner = inner;
+  }
+
+  /** Build an issuer from a raw key. The key is held only inside WASM. */
+  static fromKey(key: Uint8Array): Issuer {
+    ensureReady();
+    try {
+      return new Issuer(wasm.Issuer.fromKey(key));
+    } catch (e) {
+      mapWasmError(e, "generic");
+    }
+  }
+
+  /** Begin issuing a capability with the given identifier. */
+  issue(identifier: string): CapabilityBuilder {
+    ensureReady();
+    try {
+      return new CapabilityBuilder(this._inner.issue(identifier));
+    } catch (e) {
+      mapWasmError(e, "generic");
+    }
+  }
+}
+
+/** Signs and verifies audit receipts. */
+export class Auditor {
+  /** @internal */
+  readonly _inner: wasm.Auditor;
+
+  /** Construct an auditor from its HMAC key. */
+  constructor(key: Uint8Array) {
+    ensureReady();
+    try {
+      this._inner = new wasm.Auditor(key);
+    } catch (e) {
+      // Constructor throws -> the partially-constructed `this` is never
+      // returned to the caller, so `_inner` being unassigned is sound.
+      mapWasmError(e, "audit");
+    }
+  }
+
+  /**
+   * Verify a receipt's HMAC signature. Throws `CapabilityAuditError` on
+   * any tampering or wrong-key condition.
+   */
+  verify(receipt: Receipt): void {
+    ensureReady();
+    try {
+      this._inner.verify(receiptToRaw(receipt));
+    } catch (e) {
+      mapWasmError(e, "audit");
+    }
+  }
+}
+
+/** Verifies capabilities against the root key (and a context, for caveats). */
+export class Verifier {
+  /** @internal */
+  readonly _inner: wasm.Verifier;
+
+  /** Construct a verifier from the root key. */
+  constructor(key: Uint8Array) {
+    ensureReady();
+    try {
+      this._inner = new wasm.Verifier(key);
+    } catch (e) {
+      mapWasmError(e, "chain");
+    }
+  }
+
+  /**
+   * Cheap chain-only check: confirm the HMAC chain holds under the root
+   * key. Throws `CapabilityChainError` if the chain has been tampered
+   * with or the wrong key was used.
+   */
+  verify(cap: Capability): void {
+    ensureReady();
+    try {
+      this._inner.verify(cap._inner);
+    } catch (e) {
+      mapWasmError(e, "chain");
+    }
+  }
+
+  /**
+   * Full verification: chain check, evaluate every caveat against `ctx`,
+   * sign a receipt, and return it. The receipt is logged regardless of
+   * outcome — the `outcome.kind === "denied"` path is the load-bearing
+   * audit trail for refused calls.
+   */
+  verifyWithContext(cap: Capability, ctx: Context, auditor: Auditor): Receipt {
+    ensureReady();
+    try {
+      const raw = this._inner.verifyWithContext(cap._inner, ctx, auditor._inner);
+      return rawReceiptToReceipt(raw);
+    } catch (e) {
+      mapWasmError(e, "either");
+    }
+  }
+}
