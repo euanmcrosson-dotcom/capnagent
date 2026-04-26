@@ -1,0 +1,27 @@
+[package]
+name = "capnagent-core"
+description = "Capability-based authority tokens for AI agent tool calls (macaroon-style)."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+hmac = "0.12"
+sha2 = "0.10"
+serde = { version = "1", features = ["derive"] }
+# Pin below 1.0.141 — newer versions pull in `zmij` (a legitimate dtolnay
+# float-formatting crate, replacing ryu), but its unsigned build.rs is
+# blocked by Windows AppLocker on dev machines. Revisit when toolchains
+# allow signed build scripts or when AppLocker policy is updated.
+serde_json = "=1.0.140"
+base64 = "0.22"
+thiserror = "1"
+subtle = "2"
+
+[dev-dependencies]
+proptest = "1"
