@@ -6,7 +6,7 @@ resolver = "2"
 version = "0.0.1"
 edition = "2021"
 license = "Apache-2.0"
-repository = "https://github.com/euanmcrosson/capnagent"
+repository = "https://github.com/euanmcrosson-dotcom/capnagent"
 authors = ["Euan McRosson <euanmcrosson@gmail.com>"]
 
 [workspace.lints.rust]

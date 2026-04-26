@@ -6,7 +6,7 @@ attacks. We treat reports seriously and respond quickly.
 
 ## Reporting a vulnerability
 
-**Preferred:** [Open a private security advisory](https://github.com/euanmcrosson/capnagent/security/advisories/new)
+**Preferred:** [Open a private security advisory](https://github.com/euanmcrosson-dotcom/capnagent/security/advisories/new)
 on GitHub. This keeps disclosure private until a fix lands.
 
 **Fallback:** email `euanmcrosson@gmail.com` with subject line beginning

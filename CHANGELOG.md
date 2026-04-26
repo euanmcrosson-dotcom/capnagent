@@ -55,5 +55,5 @@ Initial scaffold. Macaroon-style capability core in Rust:
 - `serde_json` pinned to `=1.0.140` to dodge the `zmij` build-script
   block on Windows AppLocker dev machines.
 
-[Unreleased]: https://github.com/euanmcrosson/capnagent/compare/v0.0.1...HEAD
-[0.0.1]: https://github.com/euanmcrosson/capnagent/releases/tag/v0.0.1
+[Unreleased]: https://github.com/euanmcrosson-dotcom/capnagent/compare/v0.0.1...HEAD
+[0.0.1]: https://github.com/euanmcrosson-dotcom/capnagent/releases/tag/v0.0.1
