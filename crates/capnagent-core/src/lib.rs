@@ -36,9 +36,10 @@ pub use error::{Error, Result};
 pub use issuer::{CapabilityBuilder, Issuer};
 pub use verifier::{Verified, Verifier};
 
+// Types from week-2 modules are re-exported here for caller convenience.
+// The free functions on `caveat_dsl` (`parse`, `evaluate`, `matches`) are
+// deliberately NOT re-exported — callers reach them through
+// `capnagent_core::caveat_dsl::*` to keep the crate root narrow.
 pub use audit::{AuditError, AuditLog, Auditor, ContextSummary, Outcome, Receipt};
-pub use caveat_dsl::{
-    evaluate as evaluate_caveat, matches as caveat_matches, parse as parse_caveat, DslError,
-    Predicate,
-};
+pub use caveat_dsl::{DslError, Predicate};
 pub use context::{Context, ContextBuilder};
