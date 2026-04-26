@@ -1,0 +1,21 @@
+{
+  "name": "capnagent-monorepo",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Workspace root for the capnagent JS/TS packages. The publishable artifacts live under packages/*; this root just hosts the build pipeline that drives the Rust/WASM toolchain and orchestrates per-package scripts.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build:wasm": "wasm-pack build crates/capnagent-wasm --target bundler --out-dir pkg",
+    "smoke:wasm": "node scripts/wasm-smoke.mjs",
+    "test": "npm run -ws --if-present test",
+    "lint": "npm run -ws --if-present lint",
+    "typecheck": "npm run -ws --if-present typecheck"
+  }
+}
