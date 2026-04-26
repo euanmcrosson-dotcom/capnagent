@@ -1,0 +1,63 @@
+name: ci
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+# Avoid spending CI minutes on superseded pushes.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-D warnings"
+
+jobs:
+  test:
+    name: build + test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+
+      - name: cargo fmt --check
+        run: cargo fmt -p capnagent-core --check
+
+      - name: cargo clippy
+        run: cargo clippy -p capnagent-core --tests -- -D warnings
+
+      # Each integration target individually so a single failure produces
+      # a focused log instead of a 100-test wall.
+      - name: property tests
+        run: cargo test -p capnagent-core --test property_tests
+      - name: context tests
+        run: cargo test -p capnagent-core --test context_tests
+      - name: caveat DSL tests
+        run: cargo test -p capnagent-core --test caveat_dsl_tests
+      - name: audit tests
+        run: cargo test -p capnagent-core --test audit_tests
+
+  audit:
+    name: cargo audit (RustSec advisory DB)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: rustsec/audit-check@v2.0.0
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  deny:
+    name: cargo deny (licenses, bans, sources)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check all
