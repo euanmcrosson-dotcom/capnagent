@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Integrated entry point: `Verifier::verify_with_context`** wires chain
+  integrity + caveat DSL evaluation + audit signing into one call.
+  Returns `Result<Receipt, VerifyError>`; the receipt's `outcome` carries
+  `Allowed` or `Denied { reason }`. 11 integration tests cover allow,
+  deny, malformed-caveat-as-deny, tamper-rejected, cross-key-rejected,
+  receipt JSON round-trip, time-caveat semantics, and timestamp recency.
+- `VerifyError` enum (variants: `Chain`, `Audit`) re-exported from the
+  crate root.
 - Caveat DSL parser and evaluator (`caveat_dsl` module): hand-rolled
   recursive-descent parser for the v0 BNF in `docs/WEEK2_SPEC.md` §2.2;
   `parse`, `evaluate`, and `matches` free functions; `Predicate` AST and

@@ -34,7 +34,7 @@ mod verifier;
 pub use capability::{Capability, Caveat};
 pub use error::{Error, Result};
 pub use issuer::{CapabilityBuilder, Issuer};
-pub use verifier::{Verified, Verifier};
+pub use verifier::{Verified, Verifier, VerifyError};
 
 // Types from week-2 modules are re-exported here for caller convenience.
 // The free functions on `caveat_dsl` (`parse`, `evaluate`, `matches`) are

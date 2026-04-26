@@ -154,46 +154,57 @@ Three module-level error types live alongside the modules they belong to:
 implements `std::error::Error` via `thiserror`. They are deliberately
 *independent* — no module reaches into another's error type.
 
-At the integration boundary in week 3, `Verifier::verify_with_context`
-will need to return any of the three failure modes to the caller. The
-chosen strategy is option **A** from the week-2 cleanup discussion:
+The integrated entry point `Verifier::verify_with_context` returns the
+shipped form of `VerifyError`:
 
 ```rust
 #[derive(Debug, thiserror::Error)]
 pub enum VerifyError {
-    #[error("capability chain: {0}")]
+    #[error("capability chain integrity: {0}")]
     Chain(#[from] Error),
-
-    #[error("caveat: {0}")]
-    Caveat(#[from] DslError),
 
     #[error("audit: {0}")]
     Audit(#[from] AuditError),
-
-    #[error("denied: {reason}")]
-    Denied { reason: String },
 }
 ```
 
-Reasoning:
+Two variants, not four. Two important refinements from the week-2 sketch:
 
-- **Preserves module independence.** `caveat_dsl` keeps owning `DslError`
-  and stays usable on its own. The integration layer composes; it does
-  not collapse.
-- **`#[from]` keeps the call sites readable.** Internal `?` propagation
-  stays one keystroke.
-- **`Denied` is a first-class variant**, not an `Err(other_error_with_a_string)`.
-  The caller can match on it cleanly: `match v.verify_with_context(...) {
-  Err(VerifyError::Denied { reason }) => audit_only(reason), ... }`.
+1. **Denial is an `Outcome`, not an error.** A capability whose caveats
+   evaluate to false is a *normal authorization decision* that produces a
+   signed `Receipt` with `Outcome::Denied { reason }`. Treating it as
+   `Err(VerifyError::Denied)` would conflate "the system worked" with
+   "something exceptional happened" — and would tempt callers to discard
+   the audit record on the deny path. We do not want that.
+2. **DSL errors fold into denial reasons.** A caveat that fails to parse
+   or evaluate (`DslError`) becomes `Outcome::Denied { reason: "caveat
+   parse error in ..." }` rather than a top-level error variant. This is
+   the **fail-closed semantic**: a verifier never accepts a token whose
+   caveats it cannot understand. Surfacing parse failures as errors would
+   put pressure on callers to "handle them" — i.e. invent ad-hoc allow
+   paths around them. Folding them into the deny path makes the safe
+   choice the only choice.
+
+`VerifyError` is therefore reserved for events that should not happen
+during normal operation:
+
+- `Chain` — chain integrity failed. Either the token was forged or the
+  wrong root key is in use. Either way, no receipt is minted; receipts
+  imply "I saw a real capability".
+- `Audit` — the auditor failed to produce or persist a receipt. With the
+  in-memory `Auditor::sign` path this is unreachable; the variant exists
+  so future audit pipelines (gRPC, file rotation, Trillian-style logs)
+  compose cleanly via `?`.
 
 Out of scope for v0: cross-process error transport (gRPC / wire format),
-error redaction policy for caller-visible messages. Both are v0.1+.
+error redaction policy for caller-visible messages, third-party
+discharge tokens. All v0.1+.
 
 Anti-pattern explicitly avoided: collapsing the three module errors into
-one giant `enum Error { ... }` at the crate root. That breaks the
-ownership boundary that made the parallel week-2 work shippable, and it
-forces every caller of any module to depend on every module's failure
-modes.
+one giant `enum Error { ... }` at the crate root. That would break the
+ownership boundary that made the parallel week-2 work shippable, and
+would force every caller of any module to depend on every module's
+failure modes.
 
 ## 7. v0 milestones
 
