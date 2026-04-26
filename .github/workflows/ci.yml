@@ -28,10 +28,20 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: cargo fmt --check
-        run: cargo fmt -p capnagent-core --check
+        run: cargo fmt --all --check
 
-      - name: cargo clippy
+      - name: cargo clippy (core)
         run: cargo clippy -p capnagent-core --tests -- -D warnings
+
+      - name: cargo clippy (wasm)
+        run: cargo clippy -p capnagent-wasm -- -D warnings
+
+      # Native check on the wasm crate as a smoke test. The actual
+      # wasm32-unknown-unknown build + wasm-pack pipeline is tracked
+      # under packages/capnagent and runs in a separate job once the
+      # TS adapter lands.
+      - name: cargo check (wasm crate, native target)
+        run: cargo check -p capnagent-wasm
 
       # Each integration target individually so a single failure produces
       # a focused log instead of a 100-test wall.
@@ -43,6 +53,8 @@ jobs:
         run: cargo test -p capnagent-core --test caveat_dsl_tests
       - name: audit tests
         run: cargo test -p capnagent-core --test audit_tests
+      - name: integration tests
+        run: cargo test -p capnagent-core --test integration_tests
 
   audit:
     name: cargo audit (RustSec advisory DB)

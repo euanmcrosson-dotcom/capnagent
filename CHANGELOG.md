@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`crates/capnagent-wasm`** — new workspace member providing
+  `wasm-bindgen` + `serde-wasm-bindgen` shims around `capnagent-core` for
+  JS / WASM consumers. Exposes `Issuer`, `CapabilityBuilder`,
+  `Capability`, `Verifier`, `Auditor`, plus an `init()` panic-hook
+  installer. Capability JS API uses `Uint8Array` for keys, plain JS
+  objects for `Context`/`Receipt`, and throws-on-error semantics.
+  Pure-Rust core stays uncontaminated by `wasm-bindgen`.
+- CI now runs `cargo clippy` and `cargo check` on the wasm crate, plus
+  `cargo test --test integration_tests`, on every push.
 - **Integrated entry point: `Verifier::verify_with_context`** wires chain
   integrity + caveat DSL evaluation + audit signing into one call.
   Returns `Result<Receipt, VerifyError>`; the receipt's `outcome` carries

@@ -1,0 +1,37 @@
+[package]
+name = "capnagent-wasm"
+description = "WebAssembly + JavaScript bindings for capnagent-core."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
+
+[lib]
+# `cdylib` produces the .wasm artefact for `wasm-pack` / direct
+# `cargo build --target wasm32-unknown-unknown`. `rlib` keeps the crate
+# usable from native Rust tests in the workspace so we can `cargo check`
+# without the wasm target installed.
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+capnagent-core = { path = "../capnagent-core" }
+wasm-bindgen = "0.2"
+serde-wasm-bindgen = "0.6"
+serde_json = "=1.0.140"
+
+# `getrandom` with the `js` feature is required when wasm-bindgen-targeted
+# code (transitively) needs RNG — many crypto crates pull this in. We list
+# it explicitly so the cargo resolver enables the `js` feature even though
+# we don't call `getrandom` ourselves.
+getrandom = { version = "0.3", features = ["wasm_js"] }
+
+# Better panic messages in the JS console when something goes wrong.
+console_error_panic_hook = { version = "0.1", optional = true }
+
+[features]
+default = ["console-panic-hook"]
+console-panic-hook = ["dep:console_error_panic_hook"]
