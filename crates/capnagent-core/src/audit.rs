@@ -56,7 +56,7 @@ pub struct Receipt {
     pub timestamp_ms: u64,
     /// HMAC-SHA256 over the canonical-JSON of the receipt with this field
     /// omitted. Hex-encoded for human-readable JSON.
-    #[serde(with = "hex_serde")]
+    #[serde(with = "crate::hex::serde_with")]
     pub signature: Vec<u8>,
 }
 
@@ -244,39 +244,3 @@ fn canonical_json_for_signing(receipt: &Receipt) -> Result<Vec<u8>, serde_json::
     serde_json::to_vec(&v)
 }
 
-mod hex_serde {
-    //! Lower-case hex encoding for `Vec<u8>` fields.
-    //!
-    //! Duplicated from `crate::capability::hex_serde` so the audit module
-    //! is independent of the capability module's private helpers, per the
-    //! ownership boundary in WEEK2_SPEC §1.
-
-    use serde::{Deserialize, Deserializer, Serializer};
-
-    pub fn serialize<S: Serializer>(bytes: &[u8], s: S) -> Result<S::Ok, S::Error> {
-        s.serialize_str(&encode(bytes))
-    }
-
-    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Vec<u8>, D::Error> {
-        let s = String::deserialize(d)?;
-        decode(&s).map_err(serde::de::Error::custom)
-    }
-
-    fn encode(bytes: &[u8]) -> String {
-        let mut out = String::with_capacity(bytes.len() * 2);
-        for b in bytes {
-            out.push_str(&format!("{b:02x}"));
-        }
-        out
-    }
-
-    fn decode(s: &str) -> Result<Vec<u8>, String> {
-        if !s.len().is_multiple_of(2) {
-            return Err("hex string has odd length".into());
-        }
-        (0..s.len())
-            .step_by(2)
-            .map(|i| u8::from_str_radix(&s[i..i + 2], 16).map_err(|e| e.to_string()))
-            .collect()
-    }
-}

@@ -27,6 +27,7 @@ pub mod context;
 
 mod capability;
 mod error;
+mod hex;
 mod issuer;
 mod verifier;
 

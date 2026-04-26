@@ -50,7 +50,7 @@ pub struct Capability {
     /// Ordered list of caveats. Order is part of the signed payload.
     pub caveats: Vec<Caveat>,
     /// HMAC-SHA256 signature, hex-encoded for human-readable JSON.
-    #[serde(with = "hex_serde")]
+    #[serde(with = "crate::hex::serde_with")]
     pub signature: Vec<u8>,
 }
 
@@ -94,33 +94,3 @@ pub(crate) fn chain_caveat(prev_sig: &[u8], caveat: &Caveat) -> Vec<u8> {
     mac.finalize().into_bytes().to_vec()
 }
 
-mod hex_serde {
-    use serde::{Deserialize, Deserializer, Serializer};
-
-    pub fn serialize<S: Serializer>(bytes: &[u8], s: S) -> Result<S::Ok, S::Error> {
-        s.serialize_str(&encode(bytes))
-    }
-
-    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Vec<u8>, D::Error> {
-        let s = String::deserialize(d)?;
-        decode(&s).map_err(serde::de::Error::custom)
-    }
-
-    fn encode(bytes: &[u8]) -> String {
-        let mut out = String::with_capacity(bytes.len() * 2);
-        for b in bytes {
-            out.push_str(&format!("{b:02x}"));
-        }
-        out
-    }
-
-    fn decode(s: &str) -> Result<Vec<u8>, String> {
-        if !s.len().is_multiple_of(2) {
-            return Err("hex string has odd length".into());
-        }
-        (0..s.len())
-            .step_by(2)
-            .map(|i| u8::from_str_radix(&s[i..i + 2], 16).map_err(|e| e.to_string()))
-            .collect()
-    }
-}
