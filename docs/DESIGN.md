@@ -147,7 +147,55 @@ Three legs. All three must hold.
 Design priorities, in order:
 **integrity > auditability > ergonomics > performance.**
 
-## 6. v0 milestones
+## 6. Error model
+
+Three module-level error types live alongside the modules they belong to:
+`Error` (capability), `DslError` (caveat DSL), `AuditError` (audit). Each
+implements `std::error::Error` via `thiserror`. They are deliberately
+*independent* — no module reaches into another's error type.
+
+At the integration boundary in week 3, `Verifier::verify_with_context`
+will need to return any of the three failure modes to the caller. The
+chosen strategy is option **A** from the week-2 cleanup discussion:
+
+```rust
+#[derive(Debug, thiserror::Error)]
+pub enum VerifyError {
+    #[error("capability chain: {0}")]
+    Chain(#[from] Error),
+
+    #[error("caveat: {0}")]
+    Caveat(#[from] DslError),
+
+    #[error("audit: {0}")]
+    Audit(#[from] AuditError),
+
+    #[error("denied: {reason}")]
+    Denied { reason: String },
+}
+```
+
+Reasoning:
+
+- **Preserves module independence.** `caveat_dsl` keeps owning `DslError`
+  and stays usable on its own. The integration layer composes; it does
+  not collapse.
+- **`#[from]` keeps the call sites readable.** Internal `?` propagation
+  stays one keystroke.
+- **`Denied` is a first-class variant**, not an `Err(other_error_with_a_string)`.
+  The caller can match on it cleanly: `match v.verify_with_context(...) {
+  Err(VerifyError::Denied { reason }) => audit_only(reason), ... }`.
+
+Out of scope for v0: cross-process error transport (gRPC / wire format),
+error redaction policy for caller-visible messages. Both are v0.1+.
+
+Anti-pattern explicitly avoided: collapsing the three module errors into
+one giant `enum Error { ... }` at the crate root. That breaks the
+ownership boundary that made the parallel week-2 work shippable, and it
+forces every caller of any module to depend on every module's failure
+modes.
+
+## 7. v0 milestones
 
 | Week | Deliverable | Status |
 |---:|---|---|
@@ -161,7 +209,7 @@ Design priorities, in order:
 Explicit non-deliverables in v0: third-party caveats, Datalog, distributed
 verifiers, GUI, multi-tenant audit storage. All deferred to v0.1+.
 
-## 7. Open questions / decisions
+## 8. Open questions / decisions
 
 - **Macaroons over Biscuits** — chosen for simplicity and audit surface area.
 - **MCP first, Anthropic Agent SDK second** — chosen for protocol-level reach.
