@@ -21,6 +21,10 @@
 
 #![deny(unsafe_code)]
 
+pub mod audit;
+pub mod caveat_dsl;
+pub mod context;
+
 mod capability;
 mod error;
 mod issuer;
@@ -30,3 +34,7 @@ pub use capability::{Capability, Caveat};
 pub use error::{Error, Result};
 pub use issuer::{CapabilityBuilder, Issuer};
 pub use verifier::{Verified, Verifier};
+
+pub use audit::{AuditError, AuditLog, Auditor, ContextSummary, Outcome, Receipt};
+pub use caveat_dsl::{evaluate as evaluate_caveat, matches as caveat_matches, parse as parse_caveat, DslError, Predicate};
+pub use context::{Context, ContextBuilder};

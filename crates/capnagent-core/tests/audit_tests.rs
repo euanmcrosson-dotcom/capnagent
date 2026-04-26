@@ -1,80 +1,12 @@
 //! Tests for the audit-log module (`crates/capnagent-core/src/audit.rs`).
-//!
-//! The audit module imports `crate::capability::{Capability, Caveat}` and
-//! `crate::context::Context`. The capability types already exist on master;
-//! `Context` is being built in parallel on `feat/week2-context` and is not
-//! yet on this branch. To keep `feat/week2-audit` green in isolation, this
-//! test file:
-//!
-//! 1. Includes `audit.rs` directly via `#[path = "../src/audit.rs"]`.
-//! 2. Provides a `mod capability` shim that re-exports the real
-//!    `Capability` and `Caveat` from `capnagent_core`.
-//! 3. Provides a `mod context` stub whose public shape exactly matches
-//!    the contract locked in WEEK2_SPEC §2.1.
-//!
-//! At merge time, `audit.rs` will be wired into `lib.rs` and these stubs
-//! will be unnecessary — `audit.rs` will pick up the real `Context` from
-//! the merged `feat/week2-context` branch. The contract is what is being
-//! tested, not the stub.
 #![allow(missing_docs)]
 
 use proptest::prelude::*;
 use std::collections::HashMap;
 use std::time::SystemTime;
 
-/// Re-export shim: makes `crate::capability::{Capability, Caveat}` resolve
-/// inside the `audit.rs` submodule.
-mod capability {
-    pub use capnagent_core::{Capability, Caveat};
-}
-
-/// Local stub for `Context`. Mirrors WEEK2_SPEC §2.1 exactly; the real
-/// type lives on Terminal B's branch and replaces this one at merge time.
-mod context {
-    use sha2::{Digest, Sha256};
-    use std::collections::HashMap;
-    use std::time::SystemTime;
-
-    #[derive(Debug, Clone)]
-    #[allow(dead_code)]
-    pub struct Context {
-        // `now` and `env` are part of the WEEK2_SPEC §2.1 contract even
-        // though `audit::Auditor::sign` only reads `caller`, `tool`, and
-        // `args` from `Context`. Keeping them here so the stub matches
-        // the real type's shape exactly.
-        pub now: SystemTime,
-        pub caller: String,
-        pub tool: String,
-        pub args: serde_json::Value,
-        pub env: HashMap<String, String>,
-    }
-
-    impl Context {
-        /// SHA-256 hex of the canonical-JSON encoding of `args`. The route
-        /// through `serde_json::Value` (which uses a sorted `BTreeMap` for
-        /// objects by default) is what makes this deterministic.
-        pub fn args_hash(&self) -> String {
-            let canonical =
-                serde_json::to_string(&self.args).expect("Value is always serializable");
-            let mut h = Sha256::new();
-            h.update(canonical.as_bytes());
-            let bytes = h.finalize();
-            let mut out = String::with_capacity(bytes.len() * 2);
-            for b in bytes {
-                out.push_str(&format!("{b:02x}"));
-            }
-            out
-        }
-    }
-}
-
-#[path = "../src/audit.rs"]
-mod audit;
-
-use audit::{AuditError, AuditLog, Auditor, Outcome, Receipt};
-use capability::{Capability, Caveat};
-use capnagent_core::Issuer;
-use context::Context;
+use capnagent_core::audit::{AuditError, AuditLog, Auditor, Outcome, Receipt};
+use capnagent_core::{Capability, Caveat, Context, Issuer};
 
 const KEY: &[u8] = b"audit-test-key-do-not-use-in-prod";
 const OTHER_KEY: &[u8] = b"a-different-32-byte-key!!!!!!!!!";

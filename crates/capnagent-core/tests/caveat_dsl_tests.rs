@@ -1,60 +1,12 @@
 //! Integration tests for the caveat DSL parser and evaluator.
-//!
-//! ## Why the test scaffolding looks unusual
-//!
-//! The `caveat_dsl` source file lives at `crates/capnagent-core/src/caveat_dsl.rs`
-//! and follows the §2.2 contract — it imports `crate::capability::Caveat` and
-//! `crate::context::Context`. But:
-//!
-//! 1. The `feat/week2-dsl` branch is forbidden from editing `lib.rs`, so the
-//!    module is not yet declared in the lib. It is wired in at merge time
-//!    by the lead (per `docs/WEEK2_SPEC.md` §5).
-//! 2. The `Context` type is owned by the parallel `feat/week2-context` branch
-//!    and is not available on this branch yet.
-//!
-//! The test binary therefore compiles the source via `#[path]` and supplies
-//! the surrounding `crate::capability` and `crate::context` modules itself.
-//! `mod context` matches the locked §2.1 public surface exactly — same fields,
-//! same types — so the source compiles unchanged here, and at merge time it
-//! will compile unchanged against the real `context.rs`.
-//!
-//! This way the source file owns the full §2.2 contract and the tests can
-//! exercise it before any other branch lands.
 
 use std::collections::HashMap;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use proptest::prelude::*;
 
-mod capability {
-    //! Shim that re-exports the real `Caveat` from the lib so the source's
-    //! `use crate::capability::Caveat;` resolves inside this test binary.
-    pub use capnagent_core::Caveat;
-}
-
-mod context {
-    //! Stub `Context` matching `WEEK2_SPEC.md` §2.1 exactly. This keeps the
-    //! test binary independent from `feat/week2-context`. The real module
-    //! has the same public fields and types; the source under test does not
-    //! depend on `args_hash()` or the builder, so we only need the struct.
-    use std::collections::HashMap;
-    use std::time::SystemTime;
-
-    #[derive(Debug, Clone)]
-    pub struct Context {
-        pub now: SystemTime,
-        pub caller: String,
-        pub tool: String,
-        pub args: serde_json::Value,
-        pub env: HashMap<String, String>,
-    }
-}
-
-#[path = "../src/caveat_dsl.rs"]
-mod caveat_dsl;
-
-use caveat_dsl::{evaluate, matches, parse, DslError};
-use context::Context;
+use capnagent_core::caveat_dsl::{evaluate, matches, parse, DslError};
+use capnagent_core::Context;
 
 // ───────────────────────── helpers ─────────────────────────
 
@@ -405,7 +357,7 @@ fn eval_env_lookup() {
 
 #[test]
 fn eval_matches_function_round_trip() {
-    let cav = capability::Caveat::new(r#"caller == "agent:planner""#);
+    let cav = capnagent_core::Caveat::new(r#"caller == "agent:planner""#);
     let ctx = ctx_with("2026-04-27T00:00:00Z", "agent:planner", "x");
     assert!(matches(&cav, &ctx).unwrap());
 }

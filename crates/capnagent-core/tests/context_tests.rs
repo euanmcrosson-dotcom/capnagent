@@ -1,25 +1,14 @@
 //! Tests for the [`Context`] / [`ContextBuilder`] and [`Context::args_hash`]
 //! canonical-JSON determinism contract from `docs/WEEK2_SPEC.md` §2.1.
-//!
-//! `context.rs` is not yet wired into `lib.rs` (per WEEK2_SPEC §1
-//! file-ownership rules — module wiring happens at merge time, not on this
-//! branch). We pull the source in directly with `#[path]` so this test file
-//! still owns nothing outside the assigned scope.
 
-// `missing_docs` is workspace-warn but the `#[path]`-included module exposes
-// fully-documented `pub` items already; suppress noise on the rest of this
-// integration-test file.
 #![allow(missing_docs)]
-
-#[path = "../src/context.rs"]
-mod context;
 
 use std::time::{Duration, SystemTime};
 
 use proptest::prelude::*;
 use serde_json::{json, Map, Value};
 
-use context::Context;
+use capnagent_core::Context;
 
 // ---------------------------------------------------------------------------
 // Builder defaults & setters
