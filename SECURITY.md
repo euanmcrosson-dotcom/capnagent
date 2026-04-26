@@ -55,6 +55,15 @@ revised timeline.
 | 0.0.x | Pre-release. Security fixes on a best-effort basis; no SLA on patch releases. |
 | ≥ 0.1.0 | (planned) Tier-1 support. Patches within the disclosure window. |
 
+## Known accepted findings (v0)
+
+We track every advisory; below are the ones we have evaluated and
+deliberately accepted for v0. Each will be revisited at v0.1 release.
+
+| Advisory | Path | Severity | Why accepted |
+|---|---|---|---|
+| GHSA-67mh-4wv8-2f99 (`esbuild` ≤ 0.24.2) | `vitest` → `vite` → `@vitest/mocker` → `vite-node` → `esbuild` | Moderate | Dev-server CSRF affecting only `vite dev` / `vitest` test runs. capnagent ships no dev server; the path is dev-deps only and is not present in any production install of `@capnagent/core` or `@capnagent/mcp`. Fix requires `vitest` 4.x (a major-version breaking change). Will revisit when 4.x is stable upstream. |
+
 ## Security model
 
 The full threat model lives in [`docs/DESIGN.md`](docs/DESIGN.md) §2. The

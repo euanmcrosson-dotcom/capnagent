@@ -74,6 +74,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed flat re-exports of `caveat_dsl` free functions from the crate
   root. Callers reach `parse` / `evaluate` / `matches` through
   `capnagent_core::caveat_dsl::*`.
+- `npm audit fix --force` bumped `vitest` 2.1.5 → 2.1.9 and
+  `vite-plugin-top-level-await` ≥ 1.6 → ^1.2.2. 5 moderate dev-only
+  advisories (esbuild dev-server CSRF) remain on `vite-node` /
+  `@vitest/mocker` / `vite` / `vitest` paths; documented as accepted
+  in `SECURITY.md`.
+
+### Documentation
+- `packages/capnagent/README.md` added with consumer setup notes,
+  including the required `vite-plugin-wasm` + `vite-plugin-top-level-await`
+  configuration snippet for vite/vitest downstream consumers.
 
 ## [0.0.1] - 2026-04-26
 
