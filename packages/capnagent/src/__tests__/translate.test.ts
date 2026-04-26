@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import type { RawReceipt } from "../__wasm-stub.js";
+import type { RawReceipt } from "../wasm.js";
 import { rawReceiptToReceipt, receiptToRaw } from "../translate.js";
 import type { Receipt } from "../types.js";
 

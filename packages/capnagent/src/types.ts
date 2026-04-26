@@ -1,7 +1,7 @@
 /**
- * Public, camelCase types exposed by `@capnagent`. The wire-format
- * counterparts (snake_case `RawReceipt`, etc.) live in `__wasm-stub.ts`
- * and never leak past the wrapper.
+ * Public, camelCase types exposed by `@capnagent/core`. The wire-format
+ * counterparts (snake_case `RawReceipt`, etc.) live in `wasm.ts` and
+ * never leak past the wrapper.
  */
 
 /**

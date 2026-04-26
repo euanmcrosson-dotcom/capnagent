@@ -40,8 +40,8 @@ agent can call tools through a capability-bearing wrapper. Three parts:
 
 1. A reproducible **WASM build pipeline** that compiles `capnagent-wasm`
    into a node- and browser-loadable artifact.
-2. **`@capnagent`** — an idiomatic TypeScript wrapper around the WASM
-   artifact, exposing classes that match the JS/TS conventions the
+2. **`@capnagent/core`** — an idiomatic TypeScript wrapper around the
+   WASM artifact, exposing classes that match the JS/TS conventions the
    downstream MCP adapter (and any other consumer) will rely on.
 3. **`@capnagent/mcp`** — an adapter that wraps an MCP TS-SDK client
    so every `tools/call` is mediated by a capability + context, with
@@ -141,9 +141,11 @@ Terminal B treats `RawReceipt` as opaque and re-shapes it into a public
 `Receipt` (see §3.2). The `RawReceipt` shape is the wire format and must
 not be touched by either A or B.
 
-### 3.2 `@capnagent` package — contract from Terminal B → Terminal C
+### 3.2 `@capnagent/core` package — contract from Terminal B → Terminal C
 
-The package's `index.ts` exports the following, exactly:
+The package's `index.ts` exports the following, exactly. Published as
+`@capnagent/core` (npm requires `@scope/name` for scoped packages —
+bare `@capnagent` is an invalid package name).
 
 ```ts
 export class Issuer {
@@ -226,7 +228,7 @@ export function init(): Promise<void>;
 ### 3.3 `@capnagent/mcp` package — public API
 
 ```ts
-import type { Capability, Auditor, Receipt, Context } from "@capnagent";
+import type { Capability, Auditor, Receipt, Context } from "@capnagent/core";
 
 /// A Context-builder callback. Called once per tool invocation; receives
 /// the tool name and arguments and returns the Context the verifier
@@ -253,7 +255,7 @@ export interface MCPClientLike {
 export interface WrapOptions {
   capability: Capability;
   auditor: Auditor;
-  verifier: import("@capnagent").Verifier;
+  verifier: import("@capnagent/core").Verifier;
   context: ContextProvider;
   /// Called with every Receipt — caller may persist to disk, post to a
   /// pipeline, etc. Errors here MUST NOT block the underlying tool call.
@@ -297,7 +299,7 @@ export function guardCall<T>(
 ## §4. Stub strategy for parallel branches
 
 Terminal B cannot import the real WASM artifact until Terminal A's
-branch lands. Terminal C cannot import `@capnagent` until B's branch
+branch lands. Terminal C cannot import `@capnagent/core` until B's branch
 lands. To keep all three productive in parallel:
 
 ### Terminal B's stub for the WASM artifact
@@ -314,7 +316,7 @@ At merge time, swap `import * as wasm from "./__wasm-stub"` for
 `import * as wasm from "../../crates/capnagent-wasm/pkg/capnagent_wasm"`.
 That's a one-line diff.
 
-### Terminal C's stub for `@capnagent`
+### Terminal C's stub for `@capnagent/core`
 
 Inside `packages/capnagent-mcp/src/`, create `__capnagent-stub.ts`
 matching §3.2 exactly. Same approach — methods that throw with a
@@ -323,7 +325,7 @@ mostly orchestration (intercept the call, build context, ask the
 verifier, log the receipt, decide). It does not need a real verifier
 to be unit-testable; mock the stub.
 
-At merge time, change `from "./__capnagent-stub"` to `from "@capnagent"`.
+At merge time, change `from "./__capnagent-stub"` to `from "@capnagent/core"`.
 
 ---
 
@@ -353,7 +355,7 @@ Each branch is done when **all** of the following hold:
   exist (`Issuer`, `Verifier`, `Auditor`, etc.). Runs in the CI job.
 - README snippet documenting `npm run build:wasm`.
 
-**Terminal B (`@capnagent`):**
+**Terminal B (`@capnagent/core`):**
 
 - Each public method has a unit test against the stub.
 - Round-trip: build a Capability, serialize, parse, verify.
@@ -416,7 +418,7 @@ After all three branches are green:
    `../../crates/capnagent-wasm/pkg/capnagent_wasm`. Run
    `npm run test` from `packages/capnagent/` — should be green.
 3. Rebase `feat/week3-ts-mcp` onto `master`. Replace the
-   `__capnagent-stub.ts` import with `@capnagent`. Run
+   `__capnagent-stub.ts` import with `@capnagent/core`. Run
    `npm run test` from `packages/capnagent-mcp/` — should be green.
 4. A final integration commit:
    - Removes both `__*-stub.ts` files.

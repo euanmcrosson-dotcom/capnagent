@@ -17,7 +17,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { RawReceipt } from "../__wasm-stub.js";
+import type { RawReceipt } from "../wasm.js";
 
 // Hoisted mock state — tests can configure the mocks before each test.
 const mocks = vi.hoisted(() => ({

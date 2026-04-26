@@ -8,6 +8,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Week 3 — JS/TS surface landed.**
+  - **`packages/capnagent`** (`@capnagent/core` on npm) — idiomatic
+    TypeScript wrapper around the WASM artifact. Public API:
+    `Issuer` / `CapabilityBuilder` / `Capability` / `Verifier` /
+    `Auditor`, `Context` / `Receipt` interfaces, error hierarchy
+    (`CapabilityError` → `CapabilityChainError`, `CapabilityAuditError`),
+    idempotent `init()`. Full snake↔camel translation at the WASM
+    boundary; defensive freezing on receipts. 33 vitest cases.
+  - **`packages/capnagent-mcp`** (`@capnagent/mcp` on npm) — adapter
+    that wraps any structurally-typed MCP client. `wrapMCPClient`
+    intercepts every `tools/call`, builds a per-call `Context` via a
+    caller-supplied callback, asks `Verifier.verifyWithContext`,
+    short-circuits with `CapabilityDeniedError` (carrying the full
+    receipt) on deny, calls through on allow. `guardCall` lower-level
+    typed-result form. `onReceipt` errors are swallowed and never
+    block the underlying call. 22 vitest cases.
+  - **WASM build pipeline** — `wasm-pack build crates/capnagent-wasm
+    --target bundler` via `npm run build:wasm`. Cross-platform
+    wrappers (`scripts/build-wasm.sh` / `.cmd`); Node smoke test
+    (`scripts/wasm-smoke.mjs`) asserting the WEEK3_SPEC §3.1 export
+    surface. New CI `wasm-build` job covering the full pipeline.
 - **`crates/capnagent-wasm`** — new workspace member providing
   `wasm-bindgen` + `serde-wasm-bindgen` shims around `capnagent-core` for
   JS / WASM consumers. Exposes `Issuer`, `CapabilityBuilder`,
