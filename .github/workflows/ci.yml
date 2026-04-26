@@ -73,3 +73,40 @@ jobs:
       - uses: EmbarkStudios/cargo-deny-action@v2
         with:
           command: check all
+
+  # WASM build pipeline — produces the JS-loadable artefact that
+  # @capnagent (TS wrapper) and @capnagent/mcp (MCP adapter) depend on.
+  # Smoke-tested by importing the build output and asserting the locked
+  # WEEK3_SPEC §3.1 export surface.
+  wasm-build:
+    name: wasm-pack build + node smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          # Separate cache slot from the `test` job so wasm-target
+          # builds don't evict the native-target ones (and vice versa).
+          shared-key: wasm-build
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: install wasm-pack
+        run: cargo install --locked wasm-pack
+
+      - name: npm ci (workspace root)
+        run: npm ci
+
+      - name: npm run build:wasm
+        run: npm run build:wasm
+
+      - name: node smoke test
+        run: npm run smoke:wasm
