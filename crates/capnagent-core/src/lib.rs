@@ -36,5 +36,8 @@ pub use issuer::{CapabilityBuilder, Issuer};
 pub use verifier::{Verified, Verifier};
 
 pub use audit::{AuditError, AuditLog, Auditor, ContextSummary, Outcome, Receipt};
-pub use caveat_dsl::{evaluate as evaluate_caveat, matches as caveat_matches, parse as parse_caveat, DslError, Predicate};
+pub use caveat_dsl::{
+    evaluate as evaluate_caveat, matches as caveat_matches, parse as parse_caveat, DslError,
+    Predicate,
+};
 pub use context::{Context, ContextBuilder};

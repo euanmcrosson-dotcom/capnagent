@@ -253,7 +253,7 @@ mod hex_serde {
 
     use serde::{Deserialize, Deserializer, Serializer};
 
-    pub fn serialize<S: Serializer>(bytes: &Vec<u8>, s: S) -> Result<S::Ok, S::Error> {
+    pub fn serialize<S: Serializer>(bytes: &[u8], s: S) -> Result<S::Ok, S::Error> {
         s.serialize_str(&encode(bytes))
     }
 
@@ -271,7 +271,7 @@ mod hex_serde {
     }
 
     fn decode(s: &str) -> Result<Vec<u8>, String> {
-        if s.len() % 2 != 0 {
+        if !s.len().is_multiple_of(2) {
             return Err("hex string has odd length".into());
         }
         (0..s.len())

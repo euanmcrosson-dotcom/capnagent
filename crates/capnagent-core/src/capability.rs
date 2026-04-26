@@ -79,9 +79,8 @@ impl Capability {
     /// callers must hand the result to a `Verifier`.
     pub fn parse(token: &str) -> Result<Self> {
         let bytes = URL_SAFE_NO_PAD.decode(token)?;
-        let cap: Capability = serde_json::from_slice(&bytes).map_err(|e| {
-            Error::InvalidFormat(format!("not a valid capnagent capability: {e}"))
-        })?;
+        let cap: Capability = serde_json::from_slice(&bytes)
+            .map_err(|e| Error::InvalidFormat(format!("not a valid capnagent capability: {e}")))?;
         Ok(cap)
     }
 }
@@ -89,8 +88,8 @@ impl Capability {
 /// HMAC-SHA256(prev_sig, caveat.predicate). Internal building block shared
 /// by issuer, attenuator, and verifier so they stay in lock-step.
 pub(crate) fn chain_caveat(prev_sig: &[u8], caveat: &Caveat) -> Vec<u8> {
-    let mut mac = <Hmac<Sha256> as Mac>::new_from_slice(prev_sig)
-        .expect("HMAC accepts keys of any length");
+    let mut mac =
+        <Hmac<Sha256> as Mac>::new_from_slice(prev_sig).expect("HMAC accepts keys of any length");
     mac.update(caveat.predicate.as_bytes());
     mac.finalize().into_bytes().to_vec()
 }
@@ -98,7 +97,7 @@ pub(crate) fn chain_caveat(prev_sig: &[u8], caveat: &Caveat) -> Vec<u8> {
 mod hex_serde {
     use serde::{Deserialize, Deserializer, Serializer};
 
-    pub fn serialize<S: Serializer>(bytes: &Vec<u8>, s: S) -> Result<S::Ok, S::Error> {
+    pub fn serialize<S: Serializer>(bytes: &[u8], s: S) -> Result<S::Ok, S::Error> {
         s.serialize_str(&encode(bytes))
     }
 
@@ -116,7 +115,7 @@ mod hex_serde {
     }
 
     fn decode(s: &str) -> Result<Vec<u8>, String> {
-        if s.len() % 2 != 0 {
+        if !s.len().is_multiple_of(2) {
             return Err("hex string has odd length".into());
         }
         (0..s.len())
