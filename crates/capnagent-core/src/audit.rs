@@ -23,7 +23,7 @@
 use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
 use std::path::Path;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::UNIX_EPOCH;
 
 use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
@@ -112,7 +112,19 @@ impl Auditor {
     /// receipt with the `signature` field stripped (set to empty during
     /// signing, then overwritten with the computed MAC).
     pub fn sign(&self, cap: &Capability, ctx: &Context, outcome: Outcome) -> Receipt {
-        let timestamp_ms = SystemTime::now()
+        // Use the verifier-supplied `now` from the Context rather than
+        // calling `SystemTime::now()` here. Two reasons:
+        //
+        // 1. Semantic — the receipt's timestamp should match the wall-clock
+        //    the verifier evaluated caveats against, not "whenever audit
+        //    got around to signing". Using ctx.now keeps the receipt
+        //    self-consistent.
+        // 2. Portability — `SystemTime::now()` panics with `unreachable!`
+        //    on `wasm32-unknown-unknown` (no system clock). Pulling the
+        //    timestamp from the Context (which the WASM binding seeds from
+        //    JS-side `Date.now()`) avoids a build-target-specific shim.
+        let timestamp_ms = ctx
+            .now
             .duration_since(UNIX_EPOCH)
             .map(|d| d.as_millis() as u64)
             .unwrap_or(0);

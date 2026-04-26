@@ -110,3 +110,9 @@ jobs:
 
       - name: node smoke test
         run: npm run smoke:wasm
+
+      - name: build @capnagent/core dist (required by demo)
+        run: npm run -w @capnagent/core build
+
+      - name: workspace tests (TS packages + demo)
+        run: npm test --workspaces --if-present

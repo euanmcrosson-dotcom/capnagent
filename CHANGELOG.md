@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Week 4 — shopping-agent demo (scripted version).** New
+  `examples/shopping-agent` workspace package implements the
+  prompt-injection-proof tool-call demo end-to-end. Two
+  capabilities (browse + buy), a mock MCP-shaped client with a
+  hostile-product-page injection, and a vitest spec asserting
+  the load-bearing claim: even when the agent obeys an injected
+  prompt asking it to call `bank.wire`, capnagent denies the call
+  before the underlying shop sees it. 3 vitest cases. No LLM or
+  network in v0; an Anthropic-SDK-driven version is the next
+  milestone.
 - **Week 3 — JS/TS surface landed.**
   - **`packages/capnagent`** (`@capnagent/core` on npm) — idiomatic
     TypeScript wrapper around the WASM artifact. Public API:
