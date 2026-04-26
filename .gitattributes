@@ -1,0 +1,21 @@
+# Normalize line endings to LF in the repository regardless of OS.
+# Working-tree checkouts on Windows still get CRLF (via core.autocrlf); the
+# stored blobs stay LF so diffs and signatures stay deterministic.
+* text=auto eol=lf
+
+# Force CRLF for files that Windows tools insist on running with CRLF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Treat these as binary so git doesn't try to diff them.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.zip binary
+*.gz binary
+
+# Lockfiles: text, but they're machine-generated — diffing is rarely useful.
+Cargo.lock text
