@@ -19,6 +19,9 @@
     "format": "biome format --write src",
     "typecheck": "tsc --noEmit"
   },
+  "dependencies": {
+    "@capnagent/core": "*"
+  },
   "devDependencies": {
     "@biomejs/biome": "1.9.4",
     "@types/node": "20.16.11",

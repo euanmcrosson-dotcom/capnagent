@@ -1,5 +1,4 @@
-// AT MERGE TIME: rewrite `from "./__capnagent-stub"` to `from "@capnagent"`.
-import type { Auditor, Capability, Context, Receipt, Verifier } from "./__capnagent-stub";
+import type { Auditor, Capability, Context, Receipt, Verifier } from "@capnagent/core";
 
 /**
  * A Context-builder callback. Called once per tool invocation; receives the

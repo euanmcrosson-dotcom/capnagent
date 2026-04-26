@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { CapabilityAuditError, CapabilityChainError } from "../__capnagent-stub";
+import { CapabilityAuditError, CapabilityChainError } from "@capnagent/core";
 import { type WrapOptions, guardCall } from "../guard";
 import {
   allowReceipt,

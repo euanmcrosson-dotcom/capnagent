@@ -1,5 +1,5 @@
 import { vi } from "vitest";
-import type { Auditor, Capability, Context, Receipt, Verifier } from "../__capnagent-stub";
+import type { Auditor, Capability, Context, Receipt, Verifier } from "@capnagent/core";
 
 /**
  * The base receipt shape — fields shaped exactly per WEEK3_SPEC §3.2's

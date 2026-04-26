@@ -1,5 +1,4 @@
-// AT MERGE TIME: rewrite `from "./__capnagent-stub"` to `from "@capnagent"`.
-import type { Receipt } from "./__capnagent-stub";
+import type { Receipt } from "@capnagent/core";
 
 /**
  * Thrown by a wrapped MCP client's `callTool` when the verifier denies the
