@@ -1,0 +1,265 @@
+import { describe, expect, it, vi } from "vitest";
+import { CapabilityAuditError, CapabilityChainError } from "../__capnagent-stub";
+import { CapabilityDeniedError } from "../errors";
+import type { MCPClientLike, WrapOptions } from "../guard";
+import { wrapMCPClient } from "../wrap";
+import {
+  allowReceipt,
+  denyReceipt,
+  fakeAuditor,
+  fakeCap,
+  fakeVerifier,
+  sampleContext,
+} from "./fixtures";
+
+function baseOptions(
+  verifier: ReturnType<typeof fakeVerifier>,
+  extra: Partial<WrapOptions> = {},
+): WrapOptions {
+  return {
+    capability: fakeCap,
+    auditor: fakeAuditor,
+    verifier,
+    context: () => sampleContext(),
+    ...extra,
+  };
+}
+
+describe("wrapMCPClient — allow path", () => {
+  it("invokes the underlying callTool exactly once and forwards its result", async () => {
+    const inner = vi.fn().mockResolvedValue("checkout-ok");
+    const verifier = fakeVerifier(() => allowReceipt());
+    const onReceipt = vi.fn();
+
+    const wrapped = wrapMCPClient<MCPClientLike>(
+      { callTool: inner },
+      baseOptions(verifier, { onReceipt }),
+    );
+    const out = await wrapped.callTool("http.post", { qty: 1, url: "https://amazon.com/cart" });
+
+    expect(out).toBe("checkout-ok");
+    expect(inner).toHaveBeenCalledTimes(1);
+    expect(inner).toHaveBeenCalledWith("http.post", { qty: 1, url: "https://amazon.com/cart" });
+    expect(onReceipt).toHaveBeenCalledTimes(1);
+    expect(onReceipt).toHaveBeenCalledWith(
+      expect.objectContaining({ outcome: { kind: "allowed" } }),
+    );
+  });
+
+  it("calls the verifier with the constructed context", async () => {
+    const inner = vi.fn().mockResolvedValue(null);
+    const verifier = fakeVerifier(() => allowReceipt());
+    const ctxFn = vi.fn(() => sampleContext());
+
+    const wrapped = wrapMCPClient<MCPClientLike>(
+      { callTool: inner },
+      baseOptions(verifier, { context: ctxFn }),
+    );
+    await wrapped.callTool("http.post", { qty: 1 });
+
+    expect(ctxFn).toHaveBeenCalledTimes(1);
+    expect(ctxFn).toHaveBeenCalledWith("http.post", { qty: 1 });
+    expect(verifier.verifyWithContext).toHaveBeenCalledTimes(1);
+    expect(verifier.verifyWithContext).toHaveBeenCalledWith(
+      fakeCap,
+      expect.objectContaining({ caller: "agent:planner", tool: "http.post" }),
+      fakeAuditor,
+    );
+  });
+
+  it("awaits an async ContextProvider", async () => {
+    const inner = vi.fn().mockResolvedValue("ok");
+    const verifier = fakeVerifier(() => allowReceipt());
+    const ctxFn = vi.fn(async () => sampleContext());
+
+    const wrapped = wrapMCPClient<MCPClientLike>(
+      { callTool: inner },
+      baseOptions(verifier, { context: ctxFn }),
+    );
+    await wrapped.callTool("http.post", {});
+
+    expect(ctxFn).toHaveBeenCalledTimes(1);
+    expect(verifier.verifyWithContext).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("wrapMCPClient — deny path", () => {
+  it("throws CapabilityDeniedError without invoking the underlying callTool", async () => {
+    const inner = vi.fn();
+    const verifier = fakeVerifier(() => denyReceipt("amount > 50_usd"));
+    const onReceipt = vi.fn();
+
+    const wrapped = wrapMCPClient<MCPClientLike>(
+      { callTool: inner },
+      baseOptions(verifier, { onReceipt }),
+    );
+
+    await expect(wrapped.callTool("bank.wire", { to: "attacker" })).rejects.toBeInstanceOf(
+      CapabilityDeniedError,
+    );
+    expect(inner).not.toHaveBeenCalled();
+    expect(onReceipt).toHaveBeenCalledTimes(1);
+    expect(onReceipt).toHaveBeenCalledWith(
+      expect.objectContaining({ outcome: { kind: "denied", reason: "amount > 50_usd" } }),
+    );
+  });
+
+  it("CapabilityDeniedError carries the full Receipt", async () => {
+    const denied = denyReceipt("over budget");
+    const verifier = fakeVerifier(() => denied);
+    const wrapped = wrapMCPClient<MCPClientLike>({ callTool: vi.fn() }, baseOptions(verifier));
+
+    try {
+      await wrapped.callTool("x", {});
+      expect.fail("should have thrown CapabilityDeniedError");
+    } catch (err) {
+      expect(err).toBeInstanceOf(CapabilityDeniedError);
+      const e = err as CapabilityDeniedError;
+      expect(e.receipt).toEqual(denied);
+      expect(e.message).toBe("over budget");
+      expect(e.name).toBe("CapabilityDeniedError");
+    }
+  });
+
+  it("the deny-message falls back to a placeholder if outcome.kind is allowed (defensive)", () => {
+    // We don't construct a "denied error from an allowed receipt" in the
+    // adapter — but the constructor must be safe even if someone does.
+    const oddReceipt = allowReceipt();
+    const err = new CapabilityDeniedError(oddReceipt);
+    expect(err.message).toBe("denied (no reason)");
+    expect(err.receipt).toBe(oddReceipt);
+  });
+});
+
+describe("wrapMCPClient — verifier error propagation", () => {
+  it("propagates CapabilityChainError unchanged and does not invoke the underlying", async () => {
+    const inner = vi.fn();
+    const onReceipt = vi.fn();
+    const chainErr = new CapabilityChainError("bad chain");
+    const verifier = fakeVerifier(() => {
+      throw chainErr;
+    });
+
+    const wrapped = wrapMCPClient<MCPClientLike>(
+      { callTool: inner },
+      baseOptions(verifier, { onReceipt }),
+    );
+
+    await expect(wrapped.callTool("x", {})).rejects.toBe(chainErr);
+    expect(inner).not.toHaveBeenCalled();
+    // No receipt was produced, so onReceipt MUST NOT fire.
+    expect(onReceipt).not.toHaveBeenCalled();
+  });
+
+  it("propagates CapabilityAuditError unchanged", async () => {
+    const auditErr = new CapabilityAuditError("tampered");
+    const verifier = fakeVerifier(() => {
+      throw auditErr;
+    });
+    const wrapped = wrapMCPClient<MCPClientLike>({ callTool: vi.fn() }, baseOptions(verifier));
+
+    await expect(wrapped.callTool("x", {})).rejects.toBe(auditErr);
+  });
+
+  it("does NOT remap CapabilityChainError to CapabilityDeniedError", async () => {
+    const chainErr = new CapabilityChainError("bad chain");
+    const verifier = fakeVerifier(() => {
+      throw chainErr;
+    });
+    const wrapped = wrapMCPClient<MCPClientLike>({ callTool: vi.fn() }, baseOptions(verifier));
+
+    try {
+      await wrapped.callTool("x", {});
+      expect.fail("should have thrown");
+    } catch (err) {
+      expect(err).toBe(chainErr);
+      expect(err).toBeInstanceOf(CapabilityChainError);
+      expect(err).not.toBeInstanceOf(CapabilityDeniedError);
+    }
+  });
+});
+
+describe("wrapMCPClient — onReceipt resilience", () => {
+  it("an exception in onReceipt does not block the underlying call (allow)", async () => {
+    const inner = vi.fn().mockResolvedValue("ok");
+    const verifier = fakeVerifier(() => allowReceipt());
+    const onReceipt = vi.fn().mockRejectedValue(new Error("disk full"));
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const wrapped = wrapMCPClient<MCPClientLike>(
+      { callTool: inner },
+      baseOptions(verifier, { onReceipt }),
+    );
+    const out = await wrapped.callTool("x", {});
+
+    expect(out).toBe("ok");
+    expect(inner).toHaveBeenCalledTimes(1);
+    expect(consoleSpy).toHaveBeenCalled();
+    consoleSpy.mockRestore();
+  });
+
+  it("an exception in onReceipt does not change the thrown CapabilityDeniedError (deny)", async () => {
+    const inner = vi.fn();
+    const verifier = fakeVerifier(() => denyReceipt("nope"));
+    const onReceipt = vi.fn().mockRejectedValue(new Error("disk full"));
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const wrapped = wrapMCPClient<MCPClientLike>(
+      { callTool: inner },
+      baseOptions(verifier, { onReceipt }),
+    );
+
+    await expect(wrapped.callTool("x", {})).rejects.toBeInstanceOf(CapabilityDeniedError);
+    expect(inner).not.toHaveBeenCalled();
+    expect(consoleSpy).toHaveBeenCalled();
+    consoleSpy.mockRestore();
+  });
+
+  it("a synchronously-thrown onReceipt error is also swallowed", async () => {
+    const inner = vi.fn().mockResolvedValue(true);
+    const verifier = fakeVerifier(() => allowReceipt());
+    const onReceipt = vi.fn(() => {
+      throw new Error("sync boom");
+    });
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const wrapped = wrapMCPClient<MCPClientLike>(
+      { callTool: inner },
+      baseOptions(verifier, { onReceipt }),
+    );
+    const out = await wrapped.callTool("x", {});
+
+    expect(out).toBe(true);
+    expect(consoleSpy).toHaveBeenCalled();
+    consoleSpy.mockRestore();
+  });
+
+  it("works without an onReceipt callback at all", async () => {
+    const inner = vi.fn().mockResolvedValue("ok");
+    const verifier = fakeVerifier(() => allowReceipt());
+
+    const wrapped = wrapMCPClient<MCPClientLike>({ callTool: inner }, baseOptions(verifier));
+    await expect(wrapped.callTool("x", {})).resolves.toBe("ok");
+  });
+});
+
+describe("wrapMCPClient — shape preservation", () => {
+  it("the wrapped client is a drop-in replacement: extra methods on the input pass through", async () => {
+    interface RichClient extends MCPClientLike {
+      listTools(): Promise<string[]>;
+      readonly serverName: string;
+    }
+    const verifier = fakeVerifier(() => allowReceipt());
+    const inputClient: RichClient = {
+      callTool: vi.fn().mockResolvedValue("ok"),
+      listTools: vi.fn().mockResolvedValue(["http.post", "fs.read"]),
+      serverName: "shopping-srv",
+    };
+
+    const wrapped = wrapMCPClient(inputClient, baseOptions(verifier));
+
+    await expect(wrapped.callTool("http.post", {})).resolves.toBe("ok");
+    await expect(wrapped.listTools()).resolves.toEqual(["http.post", "fs.read"]);
+    expect(wrapped.serverName).toBe("shopping-srv");
+  });
+});
