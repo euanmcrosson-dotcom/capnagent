@@ -93,4 +93,3 @@ pub(crate) fn chain_caveat(prev_sig: &[u8], caveat: &Caveat) -> Vec<u8> {
     mac.update(caveat.predicate.as_bytes());
     mac.finalize().into_bytes().to_vec()
 }
-

@@ -243,4 +243,3 @@ fn canonical_json_for_signing(receipt: &Receipt) -> Result<Vec<u8>, serde_json::
     }
     serde_json::to_vec(&v)
 }
-
