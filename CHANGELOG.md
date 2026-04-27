@@ -9,6 +9,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **v0.1 — NonceStore TS/WASM surface.** `@capnagent/core` now exports
+  a `NonceStore` class plus `Verifier.withNonceStore(store)` and
+  `Verifier.withNonceTtlMs(ttlMs)` builder methods. Backed by the
+  existing Rust `InMemoryNonceStore` via fresh `wasm-bindgen` exports.
+  The handle stays inspectable from JS (`size`, `isEmpty`, `clear()`)
+  even after install — both wrapper and verifier share an `Arc` of
+  the same store. Adds 8 new tests against the real WASM artifact
+  covering: replay denial with `proof replay detected`, store
+  inspection, `clear()` semantics, `withNonceTtlMs(0)` boundary,
+  validation of negative / non-integer TTLs, and the default
+  no-replay-protection-when-no-store case. Closes the v0.1 backlog
+  item "NonceStore TS surface so the replay path is reachable from
+  JS too."
+- **mcp-fs-agent — real @modelcontextprotocol/sdk integration.** New
+  `adaptMCPSDKClient(client)` adapter converts an SDK `Client` to
+  `MCPClientLike` so it can flow through `wrapMCPClient` unchanged.
+  Runnable demo (`demo:live-mcp`) spawns the official
+  `@modelcontextprotocol/server-filesystem` via stdio, connects, and
+  walks through the same allow/deny matrix as the in-process demo —
+  but against the real server. Opt-in vitest spec
+  (`CAPNAGENT_MCP_LIVE=1`) verifies the integration: reads inside the
+  sandbox reach the server; reads outside the sandbox AND any
+  `write_file` are denied before the server sees them, even when the
+  server is configured to allow access to those paths. Establishes
+  capnagent as a verified ecosystem integration, not just a
+  structural-stub demo.
 - **examples/mcp-http-agent — second real-world consumer.** New
   workspace package `@capnagent-examples/mcp-http-agent`. Origin-
   scoped HTTP agent: capability bounds `http.get` to an allowlist of

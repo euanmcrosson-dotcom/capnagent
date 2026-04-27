@@ -69,7 +69,10 @@ examples/
                          a sandbox-scoped filesystem agent. Reads
                          inside a configured prefix are allowed; reads
                          outside, plus all writes, are denied before
-                         the underlying client sees them.
+                         the underlying client sees them. Includes
+                         adaptMCPSDKClient + opt-in live integration
+                         test against the official
+                         @modelcontextprotocol/server-filesystem.
   mcp-http-agent/        Origin-scoped HTTP agent. GETs to allowlisted
                          origins succeed; non-allowlisted GETs and any
                          POST/PUT/DELETE are denied before fetch runs.

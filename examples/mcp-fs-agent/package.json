@@ -11,12 +11,14 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "demo": "tsx src/bin/demo.ts",
+    "demo:live-mcp": "CAPNAGENT_MCP_LIVE=1 tsx src/bin/demo-live-mcp.ts",
     "lint": "biome check src",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@capnagent/core": "*",
-    "@capnagent/mcp": "*"
+    "@capnagent/mcp": "*",
+    "@modelcontextprotocol/sdk": "^1.29.0"
   },
   "devDependencies": {
     "@biomejs/biome": "1.9.4",

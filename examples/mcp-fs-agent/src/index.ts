@@ -42,6 +42,7 @@ export {
   type DeletePathArgs,
   createFsClient,
 } from "./fs-client.js";
+export { type AdaptedMCPClient, adaptMCPSDKClient } from "./mcp-adapter.js";
 
 /**
  * Demo's root key. In a real deployment this would live in your KMS /

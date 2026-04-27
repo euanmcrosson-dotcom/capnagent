@@ -79,6 +79,9 @@ examples/
   mcp-fs-agent/          Sandbox-scoped filesystem agent — first
                          real-world consumer of @capnagent/mcp. Pure
                          deterministic vitest, no API key required.
+                         Includes adaptMCPSDKClient + opt-in live
+                         integration test against the official
+                         @modelcontextprotocol/server-filesystem.
   mcp-http-agent/        Origin-scoped HTTP agent. GETs to allowlisted
                          origins allowed; userinfo / subdomain /
                          malformed-URL tricks denied because caveats
@@ -108,7 +111,7 @@ This is **v0 + most of v0.1**. v0 (weeks 1–6) is fully shipped: core + DSL + a
 - Boolean composition in the DSL (`OR` / `AND` / parens)
 - Replay protection (`NonceStore` trait + in-memory TTL impl)
 
-What's left: receipt schema versioning (cosmetic future-proofing), a `NonceStore` TS surface so the replay path is reachable from JS too. Both deferred to v0.2.
+What's left: receipt schema versioning (cosmetic future-proofing). Deferred to v0.2. The `NonceStore` TS surface — last v0.1 item — landed in `@capnagent/core` (`new NonceStore()`, `verifier.withNonceStore(store)`, `verifier.withNonceTtlMs(ttl)`) with 8 tests against the real WASM artifact.
 
 I'd love feedback, especially on:
 

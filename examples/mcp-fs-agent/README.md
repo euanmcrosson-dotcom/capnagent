@@ -79,33 +79,53 @@ whatever it sees there.
 
 ## Using a real MCP server
 
-To swap the in-process `FsClient` for the official
-[`@modelcontextprotocol/server-filesystem`](https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem),
-write a thin adapter that implements `MCPClientLike`:
+The package ships an `adaptMCPSDKClient` that wraps any
+[`@modelcontextprotocol/sdk`](https://github.com/modelcontextprotocol/typescript-sdk)
+`Client` to satisfy `MCPClientLike`. A runnable demo against the
+official
+[`@modelcontextprotocol/server-filesystem`](https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem)
+is included:
+
+```bash
+npm run -w @capnagent-examples/mcp-fs-agent demo:live-mcp
+```
+
+…and an opt-in vitest spec verifies the integration:
+
+```bash
+CAPNAGENT_MCP_LIVE=1 npm test -w @capnagent-examples/mcp-fs-agent
+```
+
+Skeleton of what `demo:live-mcp` does:
 
 ```ts
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import type { MCPClientLike } from "@capnagent/mcp";
+import { wrapMCPClient } from "@capnagent/mcp";
+import { adaptMCPSDKClient } from "@capnagent-examples/mcp-fs-agent";
 
-export async function connectMCPFs(sandbox: string): Promise<MCPClientLike> {
-  const transport = new StdioClientTransport({
-    command: "npx",
-    args: ["-y", "@modelcontextprotocol/server-filesystem", sandbox],
-  });
-  const client = new Client({ name: "capnagent-fs-agent", version: "0.0.1" }, {});
-  await client.connect(transport);
-  return {
-    async callTool(name, args) {
-      return await client.callTool({
-        name,
-        arguments: args as Record<string, unknown> | undefined,
-      });
-    },
-  };
-}
+const transport = new StdioClientTransport({
+  command: "npx",
+  args: ["-y", "@modelcontextprotocol/server-filesystem", sandboxPath],
+});
+const sdkClient = new Client({ name: "capnagent", version: "0.0.1" }, {});
+await sdkClient.connect(transport);
+
+const guarded = wrapMCPClient(adaptMCPSDKClient(sdkClient), {
+  capability,         // sandbox-scoped read cap
+  verifier,
+  auditor,
+  context: (tool, args) => ({ caller: "agent:fs", tool, args, nowMs: Date.now() }),
+});
+
+await guarded.callTool("read_text_file", { path: insideSandbox });
+// → reads the file via the real MCP server
+await guarded.callTool("read_text_file", { path: outsideSandbox });
+// → CapabilityDeniedError, server never sees the call
 ```
 
-Then pass the result to `createGuardedFsClient({ underlying, ... })`.
-The capability gate, audit receipts, and tests all work unchanged —
-that's the whole point of `MCPClientLike` being structural.
+Note that the official server's tool names differ from the
+in-process `FsClient` — it uses `read_text_file` (not `read_file`),
+adds `read_media_file`, `move_file`, `search_files`, etc. The live
+demo's capability uses the official names; consult the server's
+docs when issuing capabilities for it.
