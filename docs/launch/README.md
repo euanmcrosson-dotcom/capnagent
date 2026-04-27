@@ -1,10 +1,16 @@
 # Launch runway
 
-The library is built. This directory is everything you need to put
+The harness is shipped. This directory is everything you need to put
 it in front of strangers, in priority order. The work to ship is
 *your* work — none of this gets results until somebody clicks
 submit. Every minute spent polishing the README beyond this point
 is a minute not spent finding the first user.
+
+**Positioning** — capnagent is now framed as a *public purple-team
+harness for MCP and AI-agent tool surfaces* (with a Rust capability-
+token engine underneath). All four launch artifacts below lead with
+the corpus, not the library — the corpus is the artifact, the
+library is the engine.
 
 ## Order of operations
 

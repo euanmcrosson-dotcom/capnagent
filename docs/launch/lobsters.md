@@ -12,7 +12,7 @@ Different audience from HN: smaller, more technical, more patient with crypto an
 ## Title
 
 ```
-Capnagent: macaroon-style capability tokens for AI agent tool calls
+Capnagent: a public purple-team harness for MCP and AI-agent tool surfaces
 ```
 
 ## URL
@@ -24,22 +24,23 @@ https://github.com/euanmcrosson-dotcom/capnagent
 ## Description (the box under the URL)
 
 ```
-A Rust library (with WASM + TS bindings and an MCP adapter)
-implementing macaroon-style capability tokens for AI agent tool
-calls. Treats prompt injection as a confused-deputy problem, not a
-"trick the model" problem — the agent simply doesn't hold ambient
-authority. Every tool call routes through a 5-gate verifier (chain
-integrity, ed25519 holder-of-key proof, replay protection,
-revocation, caveat evaluation against a verifier-controlled
-context). Caveats compose via OR/AND/parens with decimals and
-timestamps. Three real-world consumers ship in the repo (filesystem,
-HTTP, shell), plus a verified live-integration test against the
-official @modelcontextprotocol/server-filesystem. Pure Rust core,
-no_std-friendly except for std::sync; WASM build via wasm-pack;
-~17 kHz 5-gate verifications/core (criterion bench in repo).
-unsafe_code = forbid. 220+ Rust tests including proptests for the
-no-broaden chain invariant and the boolean DSL composition laws.
-Looking for adversarial review of the threat model.
+A public adversarial-test corpus for MCP servers and AI-agent tool
+surfaces, plus the Rust capability-token engine that powers the
+defense. Methodology is blue-first: each round writes a falsifiable
+security claim, then the red side constructs an attack designed to
+falsify it. The PoC simulates the worst case — the agent has been
+fully compromised by the injection and emits the calls the attacker
+described — and asserts the structural defense holds regardless of
+model behavior. Every denial produces a signed receipt committed as
+evidence; reviewers can verify the full corpus by running the test
+suite. Round 01 (tool-description injection / cross-server confused
+deputy) is in; 8/8 PoC tests pass. Engine: macaroon-style HMAC
+chain, ed25519 holder-of-key, NonceStore replay protection, signed
+revocation list, caveat DSL with OR/AND/parens. WASM/TS bindings.
+Verified live-integration against the official
+@modelcontextprotocol/server-filesystem. Pure Rust, unsafe_code =
+forbid, ~17 kHz 5-gate verifications/core. Looking for adversarial
+review and suggestions for the next round.
 ```
 
 ## After posting

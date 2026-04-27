@@ -7,31 +7,41 @@
 ## Title (≤80 chars)
 
 ```
-Show HN: Capnagent – capability tokens that bound what AI agent tool calls can do
+Show HN: Capnagent – a public purple-team harness for MCP and AI agent tools
 ```
 
 ## Body (paste as the first comment on the post)
 
 ```
-Hi HN — capnagent is a Rust library (with WASM + TS bindings and an
-MCP adapter) that gives AI agent tool calls macaroon-style capability
-tokens. Instead of "trust the model not to be prompt-injected", every
-tool call goes through a 5-gate verifier: chain integrity, holder-of-
-key proof of possession (ed25519), replay protection (nonce store),
-revocation, and caveat evaluation against a verifier-controlled
-context. Caveats compose with OR / AND / parens, including decimals
-and timestamps. Out-of-scope calls are refused before the underlying
-tool surface sees them; every decision is signed into a versioned
-audit receipt. The GIF in the README shows a real Claude Opus 4.7
-agent's wire-transfer attempt denied on capability-scope grounds
-while a legitimate cable purchase proceeds. Three real-world
-consumers ship in the repo (filesystem, HTTP, shell — all
-deterministic, no LLM required), plus a verified integration test
-against the official @modelcontextprotocol/server-filesystem.
-v0/v0.1/v0.2 all shipped, backlog empty. ~17 kHz 5-gate
-verifications/core (criterion bench in repo). 220+ Rust tests, 111
-TS tests in CI. Looking for feedback on the threat model and on what
-production deployments need from the replay-store backend.
+Hi HN — capnagent is a public purple-team harness for MCP servers
+and AI-agent tool surfaces. It treats prompt injection as a
+confused-deputy attack and proves it: each round in the corpus is an
+adversarial scenario (e.g. tool-description injection / cross-server
+confused deputy), a falsifiable security claim, a runnable PoC that
+simulates the worst case (model fully cooperates with the
+injection), and a signed denial receipt as evidence. Reviewers can
+clone the repo and verify every claim by running the test suite —
+no prose-trust required.
+
+Round 01 is in: tool-description injection against an MCP filesystem
+server. 8/8 PoC tests pass; the structural defense holds when the
+issued capability is tightly path-bounded (and the round explicitly
+documents the residual risk: loose capabilities still lose;
+in-sandbox secrets are operator responsibility). Rounds 02-05
+queued: replay attack on hok-bound caps, capability broadening,
+cross-origin exfil via http-agent, shell-allowlist bypass.
+
+The engine underneath is a Rust capability-token library
+(macaroon-style chain, ed25519 holder-of-key, replay protection via
+NonceStore, signed revocation list, caveat DSL with OR/AND/parens
+and decimals) with WASM/TS bindings and an MCP adapter that drops
+in front of any structurally-typed MCP client. Verified live
+integration against the official @modelcontextprotocol/server-
+filesystem. Per-call latency: 1.4 µs chain-only, 56 µs full hok,
+170 µs hok+replay. ~17 kHz 5-gate verifications per core.
+
+220+ Rust tests, 136 TS tests in CI. Looking for adversarial review
+of the threat model and suggestions for the next purple-team round.
 ```
 
 ## URL

@@ -31,20 +31,21 @@ Concrete categories where capability bounding has obvious fit:
 Hey — saw [SPECIFIC THING about their product, written like you've
 actually used it]. Quick question about your tool-use surface: when
 your agent picks up a tool call, what stops it from picking the
-wrong one — prompt injection, naive harness, or just an over-broad
-user request?
+wrong one — prompt injection, naive harness, or an over-broad user
+request?
 
-I've been working on a capability-bounding library for exactly this:
-the agent holds a token that says what it CAN do (e.g. "GET to
-api.example.com only, no POST anywhere"), and the library refuses
-out-of-scope calls before the underlying tool sees them. Every
-decision is a signed audit log line. Repo:
-github.com/euanmcrosson-dotcom/capnagent.
+I've been building a public purple-team corpus for MCP / agent tool
+surfaces. Each round writes a falsifiable security claim, constructs
+an attack designed to falsify it, and either confirms the defense
+holds (with a signed denial receipt as evidence) or documents how
+it broke. Round 01 is in — tool-description injection / cross-server
+confused deputy. Repo: github.com/euanmcrosson-dotcom/capnagent.
 
-I'm trying to get one real production wiring in front of adversarial
-eyes. If your stack is interesting, happy to do the integration for
-free as a Friday-afternoon project — I'll write the wrapper, you
-keep the audit logs, we both find out where the model breaks.
+I'm looking to add a round against a real production stack. If your
+agent surface is interesting, happy to do the integration + write
+the round for free as a Friday-afternoon project — I'll wire the
+gate, you keep the receipts, we both find out where the defense
+breaks.
 
 No expectation; if it's not a fit just ignore. If it is — what's
 your most-feared tool-call?
@@ -53,41 +54,48 @@ your most-feared tool-call?
 ## Template 2 — DM to a security/platform engineer
 
 ```
-Hi — building capability tokens for AI-agent tool calls (Rust
-library, WASM/TS bindings, MCP adapter) and looking for security
-review from people who've shipped real auth surfaces. Specifically
-the threat model is in DESIGN.md §2/§5; the no-broaden invariant
-has 9 proptest cases; boolean DSL composition has 8 algebraic-law
-proptests. Repo: github.com/euanmcrosson-dotcom/capnagent.
+Hi — building a public purple-team harness for MCP / AI-agent tool
+surfaces and looking for adversarial review. Methodology is
+blue-first: each round writes a falsifiable claim, the red side
+constructs an attack to falsify it, the PoC simulates worst-case
+(model fully cooperates with injection), and the receipt is the
+audit-loggable evidence. Round 01 (tool-description injection
+against MCP filesystem) is in: 8/8 PoC tests pass, defense holds
+when capability is path-bounded, residual risk explicitly
+documented. Repo: github.com/euanmcrosson-dotcom/capnagent;
+methodology in docs/purple-team/.
 
-The 5 gates are chain integrity (HMAC), ed25519 holder-of-key (DPoP
-shape), replay (sha256(proof) → nonce store), signed revocation
-list, and caveat evaluation against a verifier-controlled context.
-~17 kHz/core verifications.
+Engine is a Rust capability-token library: macaroon-style HMAC
+chain, ed25519 holder-of-key (DPoP shape), NonceStore replay
+protection, signed revocation list, caveat DSL with boolean
+composition. ~17 kHz/core verifications. unsafe_code = forbid;
+220+ Rust tests including no-broaden proptests.
 
-If you have 30 min to read DESIGN.md and find one thing I got wrong,
-I'll buy you a beer / send a $50 gift card / whatever you want.
-Adversarial review is the part I can't do solo.
+If you have 30 min to read docs/purple-team/01-... and find one
+thing I got wrong, I'll send a $50 gift card / whatever. Adversarial
+review is the part I can't do solo.
 ```
 
 ## Template 3 — DM to someone running an MCP server
 
 ```
 Hey — saw your MCP server [NAME]. Question: how do you currently
-authorize the agent on the other end? My read is most MCP servers
-trust whoever connects, with whatever scopes the parent app
-configured at install time.
+authorize the agent on the other end? Most MCP servers trust whoever
+connects, with whatever scopes the parent app configured at install
+time. The Invariant Labs tool-poisoning research from 2024 showed
+how badly that fails when one of the co-installed servers turns
+malicious.
 
-Built a library that drops in front of the official @modelcontextprotocol
-TS SDK and gates each tools/call against a capability token — agent
-can do reads in /home/user/projects, can't write anywhere, can't
-execute. Server stays trusting; the gate is the hardening layer.
-Live integration test against the official server-filesystem in the
-repo. github.com/euanmcrosson-dotcom/capnagent.
+Built a public purple-team harness for this exact surface: each
+round documents a defense being tested against an attack scenario,
+with runnable PoCs and signed denial receipts as evidence. Round 01
+is the tool-poisoning case against the official
+@modelcontextprotocol/server-filesystem. Repo:
+github.com/euanmcrosson-dotcom/capnagent.
 
-Worth a 15-min call if you've thought about this surface? I'm
-specifically looking for "yeah, but here's the case you missed"
-feedback.
+Worth a 15-min call if you've thought about this surface? I'd
+specifically value "here's the attack against my server you should
+add as round NN" feedback.
 ```
 
 ## How to actually find these people

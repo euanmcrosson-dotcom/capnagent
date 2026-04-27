@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Repositioning: capnagent is now a public purple-team harness for
+  MCP and AI-agent tool surfaces** (with a Rust capability-token
+  engine underneath), not "a capability-token library." The corpus
+  in `docs/purple-team/` is the artifact; the library is the engine
+  that powers each round's defense. Pivots the README's lead, the
+  Show HN draft, the lobste.rs / r/rust / r/MachineLearning posts,
+  and the cold-DM templates to the new framing. No code change —
+  pure positioning. Reasoning: "capability tokens for AI agents" is
+  a solution looking for a problem; "public purple-team corpus for
+  MCP" is a named gap security teams know they have. Also rides MCP
+  hype directly.
+
 ### Added
 
 - **examples/mcp-shell-agent — third real-world consumer.** New

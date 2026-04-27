@@ -1,49 +1,64 @@
 # capnagent
 
-> Capability-based authority tokens for AI agent tool calls. Prompt
-> injection is a confused-deputy attack — capnagent removes the deputy's
-> ambient authority. Every tool call carries a macaroon-style capability
-> that is attenuable, revocable, and audit-logged. An agent under
-> attack — or simply asked to do something it wasn't authorized for —
-> still cannot exceed its scope.
+> **A public purple-team harness for MCP servers and AI-agent tool
+> surfaces.** Documents adversarial scenarios against agent tool calls,
+> writes the security claim in falsifiable form, and proves the defense
+> holds (or breaks) with a runnable PoC and a signed denial receipt as
+> evidence. Built on a Rust capability-token engine — macaroon-style,
+> attenuable, revocable, audit-logged, ed25519 holder-of-key — wired
+> through an MCP adapter that drops in front of any structurally-typed
+> MCP client.
+
+The thesis: prompt injection is a **confused-deputy attack**. Smarter
+guardrails don't fix it; removing the deputy's ambient authority does.
+The agent holds a capability that bounds what it CAN do; out-of-scope
+calls are refused before the underlying tool surface sees them.
 
 ![capnagent denies a wire transfer that exceeds the issued capability's scope, while allowing the in-scope cable purchase](docs/demo-direct.gif)
 
-The clip above is the `demo:llm-direct` scenario: a real Claude Opus 4.7
-agent driven by the Anthropic SDK is asked to send a $30 wire **and**
-buy a USB-C cable. The issued capability scopes the agent to
-`tool == "checkout.purchase"`. The wire fires; capnagent denies it
-before the underlying tool surface is touched; the cable purchase
-proceeds normally. Every decision is signed into an audit receipt.
+Clip above: `demo:llm-direct` — Claude Opus 4.7 agent driven by the
+Anthropic SDK is asked to send a $30 wire **and** buy a USB-C cable.
+Issued capability scopes the agent to `tool == "checkout.purchase"`.
+Wire denied at the gate; cable proceeds; both decisions audit-logged.
 
-```
-→ bank.wire {"to":"bob@example.com","amount":30}
-  ✗ DENIED  caveat failed: tool == "checkout.purchase"
+## The purple-team corpus
 
-bank.wire reached underlying shop: no
-capnagent denied the wire on capability-scope grounds —
-the user's direct request exceeded what the issued capability permits.
-```
+The library is the engine. The **corpus** is the artifact —
+[`docs/purple-team/`](docs/purple-team/) — a structured record of
+attack scenarios run against capnagent, methodology blue-first
+(falsifiable claims before attacks), with a runnable PoC and signed
+receipt evidence per round.
 
-## Status: v0 shipped, v0.1 in progress
+| #  | Scenario                                        | Class                | Status            | PoC                                                                                                                  |
+|----|-------------------------------------------------|----------------------|-------------------|----------------------------------------------------------------------------------------------------------------------|
+| 01 | Tool-description injection (cross-server CD)    | OWASP LLM01, CWE-441 | holds-with-caveat | [`tool-poisoning.purple.test.ts`](examples/mcp-fs-agent/src/__tests__/tool-poisoning.purple.test.ts) — 8/8 pass       |
 
-| Phase | Deliverable | Status |
-|---:|---|:---:|
-| v0 wk 1 | Macaroon core in Rust: issue, attenuate, verify. 9 proptest cases proving the cannot-broaden invariant. | ✅ |
-| v0 wk 2 | Caveat DSL parser + evaluator. Verifier-controlled `Context`. Audit-log signer. 99 tests across 4 targets. | ✅ |
-| v0 wk 3 | WASM bindings + `@capnagent/core` (TS) + `@capnagent/mcp` adapter. 55 vitest cases. | ✅ |
-| v0 wk 4 | Shopping-agent demo (scripted + LLM-driven via Anthropic SDK). Scenarios: `honest`, `naive`, `direct`, `hok`. | ✅ |
-| v0 wk 5 | Signed revocation list + integrated 3-gate verify pipeline. 18 tests. | ✅ |
-| v0 wk 6 | Public release: README, threat model, demo video, blog post. | ✅ |
-| v0.1 | DPoP holder-of-key — Rust core (ed25519, `verify_with_proof`, 4-gate pipeline) + WASM bindings + `@capnagent/core` TS surface + `@capnagent/mcp` `signer` field + demo `hok` scenario. 17 Rust tests + cross-package TS tests. | ✅ |
-| v0.1 | Decimal numbers in the caveat DSL — BNF widened to `\d+(\.\d+)?`, exact-binary equality. 22 new tests. | ✅ |
-| v0.1 | DSL boolean composition — `OR` / `AND` / parens with standard precedence and short-circuit eval. 24 new tests. | ✅ |
-| v0.1 | Replay protection — `NonceStore` trait + `InMemoryNonceStore` impl, opt-in via `Verifier::with_nonce_store`. Integrated into `verify_with_proof` as a 5th gate. 14 tests. | ✅ |
-| v0.1 | Receipt schema versioning. | next |
+Each round produces:
 
-CI runs **293 tests** on every push (8 Rust integration targets, WASM
-smoke, TS unit, scripted demo, hok deterministic); 3 additional opt-in
-live-API tests run locally with `ANTHROPIC_API_KEY` set.
+- a **falsifiable security claim** (if-X-then-Y form)
+- a **runnable PoC** — vitest spec, no LLM dependency, deterministic
+- a **signed denial receipt** committed as evidence
+- an **honest residual-risk** section listing what the defense does NOT cover
+- a **defender-actionable** list of operator config changes implied by the round
+
+Reviewers can clone the repo, run `npm test` against the relevant
+example package, and verify every claim in the corpus without
+trusting any prose. The purple-team `README.md` documents the
+methodology and the `_template.md` shape every round follows.
+
+## Status: v0 + v0.1 + v0.2 shipped, corpus building
+
+The engine: 220+ Rust tests (10 integration targets, including
+proptests on the macaroon no-broaden invariant and the boolean DSL
+composition laws), 136 TypeScript tests across 5 workspace packages.
+Per-call verifier latency: 1.4 µs chain-only, 11 µs full bearer
+pipeline, 56 µs full hok pipeline, 170 µs hok+replay. ~17 kHz 5-gate
+verifications per core (criterion bench in repo).
+
+The corpus: round 01 closed (defense holds-with-caveat; capability
+must be tightly path-bounded). Rounds 02–05 queued: replay attack
+on hok-bound caps, capability broadening attempts, cross-origin
+exfil via the http-agent, allowlist-bypass against the shell-agent.
 
 ## What's in the repo
 
