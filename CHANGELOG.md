@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **examples/mcp-http-agent — second real-world consumer.** New
+  workspace package `@capnagent-examples/mcp-http-agent`. Origin-
+  scoped HTTP agent: capability bounds `http.get` to an allowlist of
+  origins; `http.post`, `http.put`, `http.delete`, and any GET to a
+  non-allowlisted origin are denied before fetch runs. Caveats
+  compare against `arg.origin` — a parsed-URL field the verifier-
+  controlled Context provider populates via `new URL()`. Defends
+  against userinfo splitting (`https://api.good.com@evil.com/x`),
+  subdomain confusion (`https://api.good.com.evil.com/x`), and
+  malformed URLs (no `arg.origin` → equality check fails closed).
+  Issuance preconditions reject empty allowlists and non-canonical
+  origins synchronously at issue time. 15 deterministic vitest tests
+  using two localhost `node:http` stub servers; runnable demo via
+  `npm run -w @capnagent-examples/mcp-http-agent demo` (no real
+  network). Establishes the pattern generalizes beyond filesystem to
+  the most common AI-agent attack surface (data exfiltration via
+  fetch).
 - **examples/mcp-fs-agent — first real-world consumer.** New workspace
   package `@capnagent-examples/mcp-fs-agent`. Wraps an MCP-style
   filesystem client through `@capnagent/mcp` with a sandbox-scoped read

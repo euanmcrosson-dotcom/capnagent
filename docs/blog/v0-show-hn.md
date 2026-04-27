@@ -79,6 +79,11 @@ examples/
   mcp-fs-agent/          Sandbox-scoped filesystem agent — first
                          real-world consumer of @capnagent/mcp. Pure
                          deterministic vitest, no API key required.
+  mcp-http-agent/        Origin-scoped HTTP agent. GETs to allowlisted
+                         origins allowed; userinfo / subdomain /
+                         malformed-URL tricks denied because caveats
+                         compare against URL.origin, not the raw
+                         string. No real network — localhost stub.
 
 docs/
   DESIGN.md              Threat model, security argument (3 legs), error

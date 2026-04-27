@@ -70,6 +70,12 @@ examples/
                          inside a configured prefix are allowed; reads
                          outside, plus all writes, are denied before
                          the underlying client sees them.
+  mcp-http-agent/        Origin-scoped HTTP agent. GETs to allowlisted
+                         origins succeed; non-allowlisted GETs and any
+                         POST/PUT/DELETE are denied before fetch runs.
+                         Defends against userinfo splitting, subdomain
+                         confusion, and malformed URLs by parsing the
+                         URL inside the verifier-controlled Context.
 
 docs/
   DESIGN.md              Threat model, security argument, error model,
@@ -146,12 +152,19 @@ npm run -w @capnagent-examples/shopping-agent demo:llm-direct
 
 # Sandbox-scoped filesystem agent (no API key)
 npm run -w @capnagent-examples/mcp-fs-agent demo
+
+# Origin-scoped HTTP agent (no API key, no real network)
+npm run -w @capnagent-examples/mcp-http-agent demo
 ```
 
 The shopping-agent's four scenarios are documented in
 [`examples/shopping-agent/README.md`](examples/shopping-agent/README.md).
-The filesystem agent — the first real-world consumer of `@capnagent/mcp` —
-is in [`examples/mcp-fs-agent/README.md`](examples/mcp-fs-agent/README.md).
+Two non-LLM real-world consumers ship alongside it:
+
+- [`examples/mcp-fs-agent/README.md`](examples/mcp-fs-agent/README.md) —
+  sandbox-scoped filesystem.
+- [`examples/mcp-http-agent/README.md`](examples/mcp-http-agent/README.md) —
+  origin-scoped HTTP/fetch.
 
 ## Security model
 
