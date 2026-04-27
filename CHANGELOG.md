@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **examples/mcp-fs-agent — first real-world consumer.** New workspace
+  package `@capnagent-examples/mcp-fs-agent`. Wraps an MCP-style
+  filesystem client through `@capnagent/mcp` with a sandbox-scoped read
+  capability composed via v0.1 boolean composition + `matches`:
+  ```
+  (tool == "read_file"      AND arg.path matches "<sandbox>")
+   OR (tool == "list_directory" AND arg.path matches "<sandbox>")
+   OR (tool == "directory_tree" AND arg.path matches "<sandbox>")
+  ```
+  Reads inside the sandbox prefix are allowed; reads outside, plus all
+  writes (`write_file`, `create_directory`, `delete_path`), are denied
+  before the underlying filesystem client sees them. 9 deterministic
+  vitest tests cover the full allow/deny matrix; runnable demo via
+  `npm run -w @capnagent-examples/mcp-fs-agent demo` (no API key).
+  Documents the substring-vs-prefix property of `matches` and the
+  recommended Context-normalization pattern for production deployments.
 - **demo: hok scenario now exercises v0.1 boolean composition.** New
   `issueHokCapability(publicKey)` issues ONE hok-bound capability with
   a disjunction + decimal caveat:

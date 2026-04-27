@@ -76,6 +76,9 @@ packages/
 
 examples/
   shopping-agent/        End-to-end demo with four LLM scenarios.
+  mcp-fs-agent/          Sandbox-scoped filesystem agent — first
+                         real-world consumer of @capnagent/mcp. Pure
+                         deterministic vitest, no API key required.
 
 docs/
   DESIGN.md              Threat model, security argument (3 legs), error

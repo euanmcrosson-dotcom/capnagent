@@ -62,9 +62,14 @@ packages/
                          guardCall, CapabilityDeniedError).
 
 examples/
-  shopping-agent/        End-to-end demo. Three LLM scenarios + one
+  shopping-agent/        End-to-end demo. Four LLM scenarios + one
                          deterministic vitest spec. The clip above is
                          from this package.
+  mcp-fs-agent/          First real-world consumer of @capnagent/mcp:
+                         a sandbox-scoped filesystem agent. Reads
+                         inside a configured prefix are allowed; reads
+                         outside, plus all writes, are denied before
+                         the underlying client sees them.
 
 docs/
   DESIGN.md              Threat model, security argument, error model,
@@ -138,10 +143,15 @@ npm test --workspaces --if-present       # 55 TS + 22 WASM-smoke + 3 scripted de
 # Live LLM demo (requires ANTHROPIC_API_KEY)
 export ANTHROPIC_API_KEY=sk-ant-...
 npm run -w @capnagent-examples/shopping-agent demo:llm-direct
+
+# Sandbox-scoped filesystem agent (no API key)
+npm run -w @capnagent-examples/mcp-fs-agent demo
 ```
 
-The demo's three scenarios are documented in
+The shopping-agent's four scenarios are documented in
 [`examples/shopping-agent/README.md`](examples/shopping-agent/README.md).
+The filesystem agent — the first real-world consumer of `@capnagent/mcp` —
+is in [`examples/mcp-fs-agent/README.md`](examples/mcp-fs-agent/README.md).
 
 ## Security model
 
