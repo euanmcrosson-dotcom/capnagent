@@ -566,3 +566,232 @@ fn civil_from_days(z: i64) -> (i32, u32, u32) {
     let y = if m <= 2 { y + 1 } else { y };
     (y as i32, m, d)
 }
+
+// ───────────────────────── v0.1 §3.1: decimal numbers ─────────────────────────
+//
+// V0_1_SPEC.md §3.1 widens the `number` BNF to accept `\d+(\.\d+)?`. The
+// motivation is real: a live shopping-agent run on Haiku 4.5 emitted
+// `arg.amount = 12.99` (the literal price of a USB-C cable in the
+// catalog) and capnagent denied with a type-mismatch instead of
+// comparing against the `<= 50` cap. Tests below cover the must-parse
+// shapes, the must-reject shapes, cross-type comparisons (int caveat
+// vs decimal arg and vice versa), unit + decimal interaction, and a
+// proptest property for round-trip equality.
+
+// ─── Must-parse: every example in §3.1 ─────────────────────────────────
+
+#[test]
+fn parses_decimal_amount_le_12_99() {
+    parse("arg.amount <= 12.99").unwrap();
+}
+
+#[test]
+fn parses_decimal_amount_eq_001() {
+    parse("arg.amount == 0.01").unwrap();
+}
+
+#[test]
+fn parses_decimal_amount_gt_1000_5() {
+    parse("arg.amount > 1000.5").unwrap();
+}
+
+#[test]
+fn parses_decimal_with_unit() {
+    parse("arg.amount <= 12.99_usd").unwrap();
+}
+
+#[test]
+fn parses_integer_zero_still_works() {
+    parse("arg.budget == 0").unwrap();
+}
+
+#[test]
+fn parses_decimal_zero_zero() {
+    parse("arg.budget == 0.0").unwrap();
+}
+
+#[test]
+fn parses_negative_decimal() {
+    // The BNF allows a leading `-` on the integer part, so negative
+    // decimals fall out for free. Not in the spec example list, but
+    // worth nailing down — if the parser ever regresses on this, a
+    // refund-credit caveat like `arg.delta >= -10.00` would silently
+    // start denying.
+    parse("arg.delta >= -10.00").unwrap();
+}
+
+// ─── Must-reject: every counterexample in §3.1 ─────────────────────────
+
+#[test]
+fn rejects_trailing_dot_in_number() {
+    let err = parse("arg.amount <= 12.").unwrap_err();
+    assert!(matches!(err, DslError::Parse(_)), "{err:?}");
+    if let DslError::Parse(msg) = err {
+        // The error should mention what's expected, so a developer
+        // reading the audit log can tell typo from invalid input.
+        assert!(
+            msg.contains("digits after '.'") || msg.contains("number"),
+            "parse error message should reference the missing fractional digits, got: {msg}"
+        );
+    }
+}
+
+#[test]
+fn rejects_leading_dot_in_number() {
+    let err = parse("arg.amount <= .99").unwrap_err();
+    assert!(matches!(err, DslError::Parse(_)), "{err:?}");
+}
+
+#[test]
+fn rejects_multiple_dots_in_number() {
+    let err = parse("arg.amount <= 12.99.5").unwrap_err();
+    assert!(matches!(err, DslError::Parse(_)), "{err:?}");
+}
+
+#[test]
+fn rejects_extended_unit_suffix() {
+    // Unchanged from v0: the unit table is closed. Extending it
+    // implicitly via tokens like `usd_extra` would silently accept
+    // typos (`30_usd_per_request`), so the parser stays strict.
+    let err = parse("arg.amount <= 12_usd_extra").unwrap_err();
+    assert!(matches!(err, DslError::Parse(_)), "{err:?}");
+}
+
+#[test]
+fn rejects_negative_leading_dot() {
+    // `-` followed immediately by a fractional. The integer part must
+    // contain at least one digit even when negative.
+    let err = parse("arg.amount <= -.5").unwrap_err();
+    assert!(matches!(err, DslError::Parse(_)), "{err:?}");
+}
+
+// ─── Cross-type comparisons: int caveat ↔ decimal arg ─────────────────
+
+#[test]
+fn integer_caveat_vs_decimal_arg_under_threshold() {
+    // The headline v0.1 case: an LLM emits `12.99` for a $12.99 item,
+    // capability caps spend at `<= 50`. Must allow.
+    let p = parse("arg.amount <= 50").unwrap();
+    let mut ctx = empty_ctx();
+    ctx.args = serde_json::json!({"amount": 12.99});
+    assert!(evaluate(&p, &ctx).unwrap());
+}
+
+#[test]
+fn integer_caveat_vs_decimal_arg_over_threshold() {
+    let p = parse("arg.amount <= 50").unwrap();
+    let mut ctx = empty_ctx();
+    ctx.args = serde_json::json!({"amount": 75.5});
+    assert!(!evaluate(&p, &ctx).unwrap());
+}
+
+#[test]
+fn decimal_caveat_vs_integer_arg_under_threshold() {
+    let p = parse("arg.amount <= 50.5").unwrap();
+    let mut ctx = empty_ctx();
+    ctx.args = serde_json::json!({"amount": 13});
+    assert!(evaluate(&p, &ctx).unwrap());
+}
+
+#[test]
+fn decimal_caveat_vs_integer_arg_at_boundary() {
+    // 50 == 50.0 in IEEE-754 — exact-binary rules. The caller should
+    // pick `<=` here for safe semantics; we still demonstrate that
+    // boundary equality is bit-exact.
+    let p = parse("arg.amount == 50.0").unwrap();
+    let mut ctx = empty_ctx();
+    ctx.args = serde_json::json!({"amount": 50});
+    assert!(evaluate(&p, &ctx).unwrap());
+}
+
+#[test]
+fn decimal_caveat_vs_decimal_arg_under() {
+    let p = parse("arg.amount <= 12.99").unwrap();
+    let mut ctx = empty_ctx();
+    ctx.args = serde_json::json!({"amount": 12.99});
+    assert!(evaluate(&p, &ctx).unwrap());
+}
+
+// ─── Unit + decimal interaction ──────────────────────────────────────
+
+#[test]
+fn decimal_with_unit_against_unitless_arg_is_type_mismatch() {
+    // Same v0 rule (units must match) — we just confirm decimals do
+    // not relax it.
+    let p = parse("arg.amount <= 12.99_usd").unwrap();
+    let mut ctx = empty_ctx();
+    ctx.args = serde_json::json!({"amount": 5.50});
+    assert!(matches!(
+        evaluate(&p, &ctx),
+        Err(DslError::TypeMismatch { .. })
+    ));
+}
+
+#[test]
+fn decimal_unit_unrecognized_is_parse_error() {
+    // `chf` isn't in the unit set. v0.1 doesn't widen the unit table,
+    // and we want a parse error (not a runtime TypeMismatch) so the
+    // caveat author sees the typo at issuance, not at decision time.
+    let err = parse("arg.amount <= 12.99_chf").unwrap_err();
+    assert!(matches!(err, DslError::Parse(_)), "{err:?}");
+}
+
+// ─── Equality is exact-binary, not epsilon ───────────────────────────
+
+#[test]
+fn eq_does_not_paper_over_floating_point_rounding() {
+    // 0.1 + 0.2 != 0.3 in IEEE-754 — and the DSL agrees. This is the
+    // load-bearing "fail closed" property: the security boundary will
+    // not silently treat 50.0001 as equal to 50.
+    let p = parse("arg.x == 0.3").unwrap();
+    let mut ctx = empty_ctx();
+    ctx.args = serde_json::json!({"x": 0.1f64 + 0.2f64});
+    assert!(!evaluate(&p, &ctx).unwrap());
+}
+
+#[test]
+fn le_handles_floating_point_rounding_safely() {
+    // Companion to the test above: callers who want fuzzy equality
+    // should reach for `<=` / `>=`. 0.1 + 0.2 is a hair above 0.3,
+    // but a `<= 0.3000001` cap holds.
+    let p = parse("arg.x <= 0.3000001").unwrap();
+    let mut ctx = empty_ctx();
+    ctx.args = serde_json::json!({"x": 0.1f64 + 0.2f64});
+    assert!(evaluate(&p, &ctx).unwrap());
+}
+
+// ─── Property: round-trip parse + evaluate of any decimal ────────────
+
+proptest! {
+    /// For any random decimal `d` (formatted as a fixed-precision
+    /// string), parse `arg.x == <d>` and evaluate against
+    /// `args.x = <d-as-f64>`. Both sides go through the same
+    /// `<f64>::from_str` rounding, so the comparison must hold for
+    /// every well-formed decimal string the formatter produces.
+    ///
+    /// The generators are bounded to keep the formatted strings within
+    /// the parser's grammar (`-?\d+\.\d+`). We don't generate
+    /// arbitrary `f64` here on purpose — `f64::to_string` can emit
+    /// scientific notation (`1e-10`), which the v0.1 grammar
+    /// deliberately does NOT accept.
+    #[test]
+    fn decimal_equality_round_trips(
+        int_part in -10_000_000i64..=10_000_000,
+        frac_part in 0u32..=999_999,
+    ) {
+        // Format with leading zero-padding so `frac_part = 5` becomes
+        // `.000005`, not `.5`.
+        let s = format!("{int_part}.{frac_part:06}");
+        let f: f64 = s.parse().expect("formatter produces a parseable decimal");
+
+        let p = parse(&format!("arg.x == {s}"))
+            .unwrap_or_else(|e| panic!("parse failed for {s:?}: {e}"));
+
+        let mut ctx = empty_ctx();
+        ctx.args = serde_json::json!({"x": f});
+        prop_assert!(
+            evaluate(&p, &ctx).unwrap(),
+            "expected arg.x == {s} to hold against args.x = {f}"
+        );
+    }
+}
