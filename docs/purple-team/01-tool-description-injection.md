@@ -4,7 +4,7 @@
 |------------------------|------------------------------------------------------|
 | **Attack class**       | OWASP LLM01 (Prompt Injection); CWE-441 (Confused Deputy) |
 | **First documented**   | (this round) — based on Invariant Labs TPA research, 2024–2025 |
-| **Status**             | **drafted** — blue side specified, red PoC + run pending |
+| **Status**             | **holds-with-caveat** — defense survives the structural attack under stated assumption (capability is tightly path-bounded). 8/8 PoC tests pass. |
 | **Severity (CVSS-ish)**| High to Critical (depends on co-installed MCP servers' scopes) |
 
 ## Threat model
@@ -117,17 +117,56 @@ at the capnagent layer with a denial receipt.
 
 ## Actual outcome
 
-(To be filled in by the runnable PoC.)
+The runnable PoC simulates the worst case: the model has been fully
+compromised by the malicious tool description and emits the calls
+the description tried to induce. capnagent's gate denies the call
+before the underlying fs client touches the file. The fake-secret
+file is left unread; `underlying.log` is empty; a signed denial
+receipt is appended to the audit trail.
+
+8 PoC tests cover variants of the structural attack: direct read,
+paraphrased target paths, cross-tool hijack via `list_directory`,
+multi-step (legit-then-malicious), write-tool hijack attempt, audit
+trail integrity, and one residual-risk test that explicitly
+documents what the defense does NOT cover (in-sandbox secrets).
+
+A captured denial receipt (one concrete instance — the path field
+varies per-run because the sandbox is tempdir-based):
 
 ```json
-// docs/purple-team/evidence/01-tool-description-injection.receipt.json
-// pending PoC execution
+{
+  "version": 1,
+  "capabilityIdentifier": "fs.read",
+  "caveats": [
+    { "predicate": "caller == \"agent:fs\"" },
+    { "predicate": "now <= @2099-01-01T00:00:00Z" },
+    { "predicate": "(tool == \"read_file\" AND arg.path matches \"<sandbox>\") OR (tool == \"list_directory\" AND arg.path matches \"<sandbox>\") OR (tool == \"directory_tree\" AND arg.path matches \"<sandbox>\")" }
+  ],
+  "contextSummary": {
+    "caller": "agent:fs",
+    "tool": "read_file",
+    "argsHash": "cd24515049b0b768a6a1fc16d5e8bc0cf64057c9ab11252d0663985be7ccdd3f"
+  },
+  "outcome": {
+    "kind": "denied",
+    "reason": "caveat failed: (tool == \"read_file\" AND arg.path matches \"<sandbox>\") OR (tool == \"list_directory\" AND arg.path matches \"<sandbox>\") OR (tool == \"directory_tree\" AND arg.path matches \"<sandbox>\")"
+  },
+  "timestampMs": 1777325298784,
+  "signature": "194e76a3ab32a4a871a378a5d50ff06150b187b59c6bc12f913ccdceaae0549f"
+}
 ```
+
+Note the signed `signature` field — the receipt is HMAC-SHA256 over
+the canonical-JSON form of the receipt body (with the `version` byte
+prefix added in v0.2), so any attempt to rewrite the outcome or
+context after the fact would invalidate the signature. The audit
+trail is tamper-evident.
 
 ## Evidence
 
-- **Runnable PoC:** *(pending)* `examples/mcp-fs-agent/src/__tests__/tool-poisoning.purple.test.ts`
-- **Receipt JSON:** *(pending)* `docs/purple-team/evidence/01-tool-description-injection.receipt.json`
+- **Runnable PoC:** [`examples/mcp-fs-agent/src/__tests__/tool-poisoning.purple.test.ts`](../../examples/mcp-fs-agent/src/__tests__/tool-poisoning.purple.test.ts) — 8 deterministic tests, all passing.
+- **Receipt JSON:** [`docs/purple-team/evidence/01-tool-description-injection.receipt.json`](evidence/01-tool-description-injection.receipt.json) — one concrete denial captured by the regen script.
+- **Regen script:** `npm run -w @capnagent-examples/mcp-fs-agent regen-purple-evidence` — re-runs the attack and rewrites the evidence file. Reviewers can verify the receipt shape themselves.
 
 ## Residual risk
 

@@ -12,6 +12,7 @@
     "test:watch": "vitest",
     "demo": "tsx src/bin/demo.ts",
     "demo:live-mcp": "tsx src/bin/demo-live-mcp.ts",
+    "regen-purple-evidence": "tsx src/bin/regen-purple-evidence.ts",
     "lint": "biome check src",
     "typecheck": "tsc --noEmit"
   },

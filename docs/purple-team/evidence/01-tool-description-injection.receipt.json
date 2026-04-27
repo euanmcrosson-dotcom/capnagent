@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "capabilityIdentifier": "fs.read",
+  "caveats": [
+    {
+      "predicate": "caller == \"agent:fs\""
+    },
+    {
+      "predicate": "now <= @2099-01-01T00:00:00Z"
+    },
+    {
+      "predicate": "(tool == \"read_file\"      AND arg.path matches \"C:\\\\Users\\\\euanc\\\\AppData\\\\Local\\\\Temp\\\\capnagent-tpa-evidence-iwuOxB\\\\sandbox\") OR (tool == \"list_directory\" AND arg.path matches \"C:\\\\Users\\\\euanc\\\\AppData\\\\Local\\\\Temp\\\\capnagent-tpa-evidence-iwuOxB\\\\sandbox\") OR (tool == \"directory_tree\" AND arg.path matches \"C:\\\\Users\\\\euanc\\\\AppData\\\\Local\\\\Temp\\\\capnagent-tpa-evidence-iwuOxB\\\\sandbox\")"
+    }
+  ],
+  "contextSummary": {
+    "caller": "agent:fs",
+    "tool": "read_file",
+    "argsHash": "cd24515049b0b768a6a1fc16d5e8bc0cf64057c9ab11252d0663985be7ccdd3f"
+  },
+  "outcome": {
+    "kind": "denied",
+    "reason": "caveat failed: (tool == \"read_file\"      AND arg.path matches \"C:\\\\Users\\\\euanc\\\\AppData\\\\Local\\\\Temp\\\\capnagent-tpa-evidence-iwuOxB\\\\sandbox\") OR (tool == \"list_directory\" AND arg.path matches \"C:\\\\Users\\\\euanc\\\\AppData\\\\Local\\\\Temp\\\\capnagent-tpa-evidence-iwuOxB\\\\sandbox\") OR (tool == \"directory_tree\" AND arg.path matches \"C:\\\\Users\\\\euanc\\\\AppData\\\\Local\\\\Temp\\\\capnagent-tpa-evidence-iwuOxB\\\\sandbox\")"
+  },
+  "timestampMs": 1777325298784,
+  "signature": "194e76a3ab32a4a871a378a5d50ff06150b187b59c6bc12f913ccdceaae0549f"
+}

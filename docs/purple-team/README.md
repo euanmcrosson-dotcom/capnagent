@@ -70,9 +70,9 @@ measuring residual risk. capnagent is still proving the claim.
 
 ## Index
 
-| #  | Name                       | Class               | Status   |
-|----|----------------------------|---------------------|----------|
-| 01 | Tool-description injection | OWASP LLM01, CWE-441 | drafted |
+| #  | Name                       | Class               | Status              |
+|----|----------------------------|---------------------|---------------------|
+| 01 | Tool-description injection | OWASP LLM01, CWE-441 | holds-with-caveat   |
 
 (Status: `drafted` = blue side written; `running` = PoC under
 development; `holds` = defense survived; `holds-with-caveat` =
