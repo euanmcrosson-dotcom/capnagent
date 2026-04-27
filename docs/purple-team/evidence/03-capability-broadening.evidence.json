@@ -1,0 +1,53 @@
+{
+  "round": 3,
+  "name": "capability-broadening",
+  "generatedBy": "examples/shopping-agent/src/bin/regen-purple-evidence-03.ts",
+  "note": "Round 03 fires chain ✗ — chain failures throw CapabilityChainError before audit signing, so there is no signed denial receipt to capture. We record the (errorName, errorMessage, rejected token) triple per variant instead. A reviewer can replay each rejected token against `Verifier(ROOT_KEY).verify(...)` and confirm it still throws.",
+  "rootKeyMaterialDescription": "32 bytes of 0xc1 — deterministic test key, NOT for production use.",
+  "legitCap": {
+    "token": "eyJpZGVudGlmaWVyIjoiYnV5LWJyb2FkZW5pbmctdGVzdCIsImNhdmVhdHMiOlt7InByZWRpY2F0ZSI6ImNhbGxlciA9PSBcImFnZW50OnBsYW5uZXJcIiJ9LHsicHJlZGljYXRlIjoidG9vbCA9PSBcImNoZWNrb3V0LnB1cmNoYXNlXCIifSx7InByZWRpY2F0ZSI6ImFyZy5tZXJjaGFudCA9PSBcImFtYXpvbi5jb21cIiJ9LHsicHJlZGljYXRlIjoiYXJnLmFtb3VudCA8PSA1MCJ9LHsicHJlZGljYXRlIjoibm93IDw9IEAyMDk5LTAxLTAxVDAwOjAwOjAwWiJ9XSwic2lnbmF0dXJlIjoiMmU3YzY3ZjQ5MGRjYjhhYWRiNjUwZGJhZTMyN2ZjYjUxNDhiNzg4NWUyNDlhY2EwMTI4NTljNGZkYzIyOTIxNiJ9",
+    "verifyResult": "ok-no-throw"
+  },
+  "tamperedVariants": [
+    {
+      "variant": "v2-caveat-dropped",
+      "description": "Drop the `arg.amount <= 50` caveat from the wire format and re-serialize.",
+      "rejectedToken": "eyJpZGVudGlmaWVyIjoiYnV5LWJyb2FkZW5pbmctdGVzdCIsImNhdmVhdHMiOlt7InByZWRpY2F0ZSI6ImNhbGxlciA9PSBcImFnZW50OnBsYW5uZXJcIiJ9LHsicHJlZGljYXRlIjoidG9vbCA9PSBcImNoZWNrb3V0LnB1cmNoYXNlXCIifSx7InByZWRpY2F0ZSI6ImFyZy5tZXJjaGFudCA9PSBcImFtYXpvbi5jb21cIiJ9LHsicHJlZGljYXRlIjoibm93IDw9IEAyMDk5LTAxLTAxVDAwOjAwOjAwWiJ9XSwic2lnbmF0dXJlIjoiMmU3YzY3ZjQ5MGRjYjhhYWRiNjUwZGJhZTMyN2ZjYjUxNDhiNzg4NWUyNDlhY2EwMTI4NTljNGZkYzIyOTIxNiJ9",
+      "errorName": "CapabilityChainError",
+      "errorMessage": "invalid signature",
+      "isCapabilityChainError": true
+    },
+    {
+      "variant": "v3-caveat-mutated",
+      "description": "Broaden the amount caveat from `arg.amount <= 50` to `arg.amount <= 5000`.",
+      "rejectedToken": "eyJpZGVudGlmaWVyIjoiYnV5LWJyb2FkZW5pbmctdGVzdCIsImNhdmVhdHMiOlt7InByZWRpY2F0ZSI6ImNhbGxlciA9PSBcImFnZW50OnBsYW5uZXJcIiJ9LHsicHJlZGljYXRlIjoidG9vbCA9PSBcImNoZWNrb3V0LnB1cmNoYXNlXCIifSx7InByZWRpY2F0ZSI6ImFyZy5tZXJjaGFudCA9PSBcImFtYXpvbi5jb21cIiJ9LHsicHJlZGljYXRlIjoiYXJnLmFtb3VudCA8PSA1MDAwIn0seyJwcmVkaWNhdGUiOiJub3cgPD0gQDIwOTktMDEtMDFUMDA6MDA6MDBaIn1dLCJzaWduYXR1cmUiOiIyZTdjNjdmNDkwZGNiOGFhZGI2NTBkYmFlMzI3ZmNiNTE0OGI3ODg1ZTI0OWFjYTAxMjg1OWM0ZmRjMjI5MjE2In0",
+      "errorName": "CapabilityChainError",
+      "errorMessage": "invalid signature",
+      "isCapabilityChainError": true
+    },
+    {
+      "variant": "v4-signature-zeroed",
+      "description": "Overwrite the 32-byte HMAC-SHA256 signature with all zeros.",
+      "rejectedToken": "eyJpZGVudGlmaWVyIjoiYnV5LWJyb2FkZW5pbmctdGVzdCIsImNhdmVhdHMiOlt7InByZWRpY2F0ZSI6ImNhbGxlciA9PSBcImFnZW50OnBsYW5uZXJcIiJ9LHsicHJlZGljYXRlIjoidG9vbCA9PSBcImNoZWNrb3V0LnB1cmNoYXNlXCIifSx7InByZWRpY2F0ZSI6ImFyZy5tZXJjaGFudCA9PSBcImFtYXpvbi5jb21cIiJ9LHsicHJlZGljYXRlIjoiYXJnLmFtb3VudCA8PSA1MCJ9LHsicHJlZGljYXRlIjoibm93IDw9IEAyMDk5LTAxLTAxVDAwOjAwOjAwWiJ9XSwic2lnbmF0dXJlIjoiMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMCJ9",
+      "errorName": "CapabilityChainError",
+      "errorMessage": "invalid signature",
+      "isCapabilityChainError": true
+    },
+    {
+      "variant": "v5-signature-spliced-from-sibling",
+      "description": "Splice in the signature from a different cap (same root key, different caveats).",
+      "rejectedToken": "eyJpZGVudGlmaWVyIjoiYnV5LWJyb2FkZW5pbmctdGVzdCIsImNhdmVhdHMiOlt7InByZWRpY2F0ZSI6ImNhbGxlciA9PSBcImFnZW50OnBsYW5uZXJcIiJ9LHsicHJlZGljYXRlIjoidG9vbCA9PSBcImNoZWNrb3V0LnB1cmNoYXNlXCIifSx7InByZWRpY2F0ZSI6ImFyZy5tZXJjaGFudCA9PSBcImFtYXpvbi5jb21cIiJ9LHsicHJlZGljYXRlIjoiYXJnLmFtb3VudCA8PSA1MCJ9LHsicHJlZGljYXRlIjoibm93IDw9IEAyMDk5LTAxLTAxVDAwOjAwOjAwWiJ9XSwic2lnbmF0dXJlIjoiMGFiZmI1ZjViOGU4ZjhkYjc0Y2VhMmIwZGRhNzNiNmQ1OWY5Yzc0N2Y1MGVmYTFhNmJkODQ3NGY0NzgxYTIwMyJ9",
+      "errorName": "CapabilityChainError",
+      "errorMessage": "invalid signature",
+      "isCapabilityChainError": true
+    },
+    {
+      "variant": "v6-cross-key-forgery",
+      "description": "Mint an identical-shaped cap under a different root key; verify under the original key.",
+      "rejectedToken": "eyJpZGVudGlmaWVyIjoiYnV5LWJyb2FkZW5pbmctdGVzdCIsImNhdmVhdHMiOlt7InByZWRpY2F0ZSI6ImNhbGxlciA9PSBcImFnZW50OnBsYW5uZXJcIiJ9LHsicHJlZGljYXRlIjoidG9vbCA9PSBcImNoZWNrb3V0LnB1cmNoYXNlXCIifSx7InByZWRpY2F0ZSI6ImFyZy5tZXJjaGFudCA9PSBcImFtYXpvbi5jb21cIiJ9LHsicHJlZGljYXRlIjoiYXJnLmFtb3VudCA8PSA1MCJ9LHsicHJlZGljYXRlIjoibm93IDw9IEAyMDk5LTAxLTAxVDAwOjAwOjAwWiJ9XSwic2lnbmF0dXJlIjoiZDZmYmUzNjgxMzE3ZThlNGMxN2NhMGQ2OGQ4OWE2YjIxNTc4NjkzYzEwNWM0M2NiOWZkODZmYzdjYTYyNWQ4NyJ9",
+      "errorName": "CapabilityChainError",
+      "errorMessage": "invalid signature",
+      "isCapabilityChainError": true
+    }
+  ]
+}

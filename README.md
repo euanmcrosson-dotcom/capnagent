@@ -33,6 +33,9 @@ receipt evidence per round.
 |----|-------------------------------------------------|----------------------|-------------------|----------------------------------------------------------------------------------------------------------------------|
 | 01 | Tool-description injection (cross-server CD)    | OWASP LLM01, CWE-441 | holds-with-caveat | [`tool-poisoning.purple.test.ts`](examples/mcp-fs-agent/src/__tests__/tool-poisoning.purple.test.ts) — 8/8 pass       |
 | 02 | Replay attack on hok-bound capability           | OWASP A07, CWE-294   | holds-with-caveat | [`replay-attack.purple.test.ts`](packages/capnagent/src/__tests__/replay-attack.purple.test.ts) — 8/8 pass            |
+| 03 | Capability broadening (hostile-holder tampering) | CWE-345              | holds-with-caveat | [`capability-broadening.purple.test.ts`](packages/capnagent/src/__tests__/capability-broadening.purple.test.ts) — 12/12 pass |
+| 04 | Revocation race (revoked-capability replay)    | OWASP A01, CWE-672   | holds-with-caveat | [`round_04_revocation_race.purple.rs`](crates/capnagent-core/tests/round_04_revocation_race.purple.rs) — 11/11 pass (Rust) |
+| 05 | Cross-origin exfil via http-agent              | OWASP LLM01, CWE-441 | holds-with-caveat | [`cross-origin-exfil.purple.test.ts`](examples/mcp-http-agent/src/__tests__/cross-origin-exfil.purple.test.ts) — 11/11 pass |
 
 Each round produces:
 
@@ -56,10 +59,14 @@ Per-call verifier latency: 1.4 µs chain-only, 11 µs full bearer
 pipeline, 56 µs full hok pipeline, 170 µs hok+replay. ~17 kHz 5-gate
 verifications per core (criterion bench in repo).
 
-The corpus: round 01 closed (defense holds-with-caveat; capability
-must be tightly path-bounded). Rounds 02–05 queued: replay attack
-on hok-bound caps, capability broadening attempts, cross-origin
-exfil via the http-agent, allowlist-bypass against the shell-agent.
+The corpus: rounds 01–05 closed, all holds-with-caveat. Five named
+attack scenarios (cross-server confused deputy, hok-replay,
+capability broadening, revocation race, cross-origin exfil) each
+backed by a runnable PoC and a captured denial receipt. Across the
+corpus, every gate of the 5-gate pipeline has been exercised by at
+least one round — chain (rounds 01/02/03/04/05), proof (02), replay
+(02), revocation (04), caveat (01/05) — so no column is empty.
+Round 06 (allowlist bypass against shell-agent) is queued.
 
 ## What's in the repo
 

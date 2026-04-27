@@ -11,6 +11,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "demo": "tsx src/bin/demo.ts",
+    "regen-purple-evidence-05": "tsx src/bin/regen-purple-evidence-05.ts",
     "lint": "biome check src",
     "typecheck": "tsc --noEmit"
   },

@@ -16,6 +16,7 @@
     "demo:llm-direct": "tsx src/bin/demo-llm.ts direct",
     "demo:llm-hok": "tsx src/bin/demo-llm.ts hok",
     "regen-purple-evidence-02": "tsx src/bin/regen-purple-evidence-02.ts",
+    "regen-purple-evidence-03": "tsx src/bin/regen-purple-evidence-03.ts",
     "lint": "biome check src",
     "typecheck": "tsc --noEmit"
   },

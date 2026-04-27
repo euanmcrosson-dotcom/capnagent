@@ -111,10 +111,13 @@ the structural claim; blue-first dominates here.
 
 ## Index
 
-| #  | Name                                             | Class                  | Status                | Re-validate-by | Gates fired (last run) |
-|----|--------------------------------------------------|------------------------|-----------------------|----------------|------------------------|
-| 01 | Tool-description injection (cross-server CD)     | OWASP LLM01, CWE-441   | CLOSED 2026-05-04     | 2026-11-04     | chain ✓ caveat ✗       |
-| 02 | Replay attack on hok-bound capability            | OWASP A07, CWE-294     | CLOSED 2026-05-04     | 2026-11-04     | chain ✓ proof ✓ replay ✗ |
+| #  | Name                                             | Class                  | Status                | Re-validate-by | Gates fired (last run)        |
+|----|--------------------------------------------------|------------------------|-----------------------|----------------|-------------------------------|
+| 01 | Tool-description injection (cross-server CD)     | OWASP LLM01, CWE-441   | CLOSED 2026-05-04     | 2026-11-04     | chain ✓ caveat ✗              |
+| 02 | Replay attack on hok-bound capability            | OWASP A07, CWE-294     | CLOSED 2026-05-04     | 2026-11-04     | chain ✓ proof ✓ replay ✗      |
+| 03 | Capability broadening (hostile-holder tampering) | CWE-345                | CLOSED 2026-04-27     | 2026-10-27     | chain ✗ (pre-receipt throw)   |
+| 04 | Revocation race (revoked-capability replay)      | OWASP A01, CWE-672     | CLOSED 2026-04-27     | 2026-10-27     | chain ✓ revoke ✗              |
+| 05 | Cross-origin exfil via http-agent                | OWASP LLM01, CWE-441   | CLOSED 2026-04-27     | 2026-10-27     | chain ✓ caveat ✗ (origin)     |
 
 (Status enum: `OPEN`, `PARTIAL`, `CLOSED — date`. Gates symbols:
 `✓` gate checked + passed; `✗` gate checked + denied (this is

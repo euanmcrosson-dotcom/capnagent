@@ -9,6 +9,70 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Purple-team rounds 03, 04, 05 — closes every previously-empty
+  gate column in the corpus.** Three rounds shipped in a single
+  parallel-worktree pass:
+
+  - **Round 03 — Capability broadening (hostile-holder tampering).**
+    Fires the `chain ✗` gate column. A hostile holder attempts to
+    broaden a capability they hold (drop a caveat, modify a
+    caveat's text, splice a signature from a different cap, mint
+    under a different root key, zero the signature field). All
+    eight tampering variants surface a UNIFORM `CapabilityChainError`
+    "invalid signature" — no variance oracle for an attacker, single
+    greppable string for ops monitoring. PoC at
+    `packages/capnagent/src/__tests__/capability-broadening.purple.test.ts`
+    — 12 deterministic tests, real WASM, base64-decode-edit-encode
+    for byte-level tampering plus cross-key minting via
+    `Issuer.fromKey(ALT_ROOT_KEY)`. The 9 existing Rust proptests in
+    `tests/property_tests.rs` are referenced as the formal-proof
+    underpinning. Evidence at
+    `docs/purple-team/evidence/03-capability-broadening.evidence.json`
+    (note: `.evidence.json` not `.receipt.json` — chain failures
+    throw before any receipt is signed).
+
+  - **Round 04 — Revocation race (revoked-capability replay).**
+    Fires the `revoke ✗` gate column. A holder of a once-legitimate
+    capability continues to use it after the issuer publishes a
+    signed revocation list. Defense: `Verifier::with_revocation_list(...)`
+    consults the list at every verify call; revoked identifiers are
+    denied with reason `"capability revoked: <id>"` (string locked
+    for greppability). Written in Rust at
+    `crates/capnagent-core/tests/round_04_revocation_race.purple.rs`
+    because the WASM bindings do not yet expose `RevocationList` —
+    11 integration tests, all passing. **Operational finding worth
+    flagging: `with_revocation_list` fails CLOSED on signature
+    mismatch but in a way that returns a `Result` to the caller —
+    if the operator handles the error by ignoring it, the resulting
+    `Verifier` has NO list installed (silent-bypass mode). Round
+    doc tags this as a paged-alert requirement.** Evidence at
+    `docs/purple-team/evidence/04-revocation-race.receipt.json`.
+
+  - **Round 05 — Cross-origin exfil via http-agent.** Fires the
+    `caveat ✗` gate column on the http-agent's origin-bounded cap
+    (round 01 fires it on the fs-agent; this round demonstrates the
+    same defense against a different cap shape and Context-
+    normalization pattern). Malicious tool description tries to
+    redirect a fully-cooperating agent to GET attacker-controlled
+    origins. Defense: verifier-controlled Context provider parses
+    `arg.url` via standard `URL` constructor and writes the
+    canonical origin into `arg.origin` BEFORE the verifier evaluates
+    the caveat. Userinfo splitting (`https://api.good.com@evil.com/x`)
+    parses to `https://evil.com`; subdomain confusion
+    (`https://api.good.com.evil.com/x`) parses verbatim; malformed
+    URLs leave `arg.origin` unset, so equality fails closed. PoC at
+    `examples/mcp-http-agent/src/__tests__/cross-origin-exfil.purple.test.ts`
+    — 11 deterministic tests using a localhost `node:http` stub
+    (no real network). Captured denial reason:
+    `caveat failed: tool == "http.get" AND (arg.origin == "https://api.example.com")`.
+
+  Corpus state after this batch: every gate of the 5-gate verify
+  pipeline has been exercised by at least one round — chain (all
+  five rounds touch the chain leg; round 03 explicitly fires it),
+  proof (02), replay (02), revoke (04), caveat (01 + 05). No
+  column is empty. Total: 5 closed rounds, 50 PoC tests across 4
+  workspace packages + 1 Rust integration target.
+
 - **Purple-team round 02: Replay attack on hok-bound capability.**
   Fires the `replay ✗` gate column the corpus had empty after round
   01. Threat model: attacker captures (cap, ctx, challenge, proof)

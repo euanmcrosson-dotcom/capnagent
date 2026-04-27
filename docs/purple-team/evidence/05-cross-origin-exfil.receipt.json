@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "capabilityIdentifier": "http.get",
+  "caveats": [
+    {
+      "predicate": "caller == \"agent:http\""
+    },
+    {
+      "predicate": "now <= @2099-01-01T00:00:00Z"
+    },
+    {
+      "predicate": "tool == \"http.get\" AND (arg.origin == \"https://api.example.com\")"
+    }
+  ],
+  "contextSummary": {
+    "caller": "agent:http",
+    "tool": "http.get",
+    "argsHash": "28a85a436f267638683d034406c875221ab99b74306492f2e9b369b1332e081e"
+  },
+  "outcome": {
+    "kind": "denied",
+    "reason": "caveat failed: tool == \"http.get\" AND (arg.origin == \"https://api.example.com\")"
+  },
+  "timestampMs": 1777329387056,
+  "signature": "3480cb1ec81aa91bd695e1421d0fcc90f6a66a488401f7a4a8c79c8520ae1405"
+}

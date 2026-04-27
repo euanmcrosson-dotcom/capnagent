@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "capability_identifier": "buy-stolen-token",
+  "caveats": [],
+  "context_summary": {
+    "caller": "agent:planner",
+    "tool": "checkout.purchase",
+    "args_hash": "e52fbb7e3d37b667d250b2691ae61a2f5040a72a32b25289ba41f02f5fccc8e6"
+  },
+  "outcome": {
+    "kind": "denied",
+    "reason": "capability revoked: buy-stolen-token"
+  },
+  "timestamp_ms": 1700000000000,
+  "signature": "663e210fecfeec44160a7edafdd27b38702d01b4f4970bcb62d42ea7682d0db8"
+}

@@ -40,3 +40,12 @@ criterion = { version = "0.5", default-features = false }
 [[bench]]
 name = "verify_pipeline"
 harness = false
+
+# Purple-team round 04 — revocation race / revoked-capability replay.
+# The file uses the corpus naming convention `*.purple.rs` so it stands
+# out from regular integration tests; cargo doesn't accept dots in
+# auto-discovered crate names, so we declare it explicitly with a
+# sanitized crate name and an explicit path.
+[[test]]
+name = "round_04_revocation_race_purple"
+path = "tests/round_04_revocation_race.purple.rs"
