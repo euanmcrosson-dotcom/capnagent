@@ -87,9 +87,15 @@ async function main(): Promise<void> {
   // CLI args. We give it BOTH so we can demonstrate that even when the
   // server is configured to allow access to the outside path,
   // capnagent still denies the call before the server sees it.
+  // `stderr: "ignore"` keeps the spawned server's startup messages
+  // ("Secure MCP Filesystem Server running on stdio", glob deprecation
+  // warnings from npx, etc.) out of the demo output. Production
+  // wiring would use "pipe" + a logger so server diagnostics still
+  // land somewhere — the demo just wants a clean transcript.
   const transport = new StdioClientTransport({
     command: "npx",
     args: ["-y", "@modelcontextprotocol/server-filesystem", sandbox, outside],
+    stderr: "ignore",
   });
   const sdkClient = new Client({ name: "capnagent-fs-live", version: "0.0.1" }, {});
   await sdkClient.connect(transport);
