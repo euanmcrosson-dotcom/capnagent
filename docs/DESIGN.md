@@ -211,11 +211,11 @@ failure modes.
 | Week | Deliverable | Status |
 |---:|---|---|
 | 1 | Macaroon core in Rust: issue, attenuate, verify. Property tests for the cannot-broaden invariant. | ✅ landed |
-| 2 | Caveat DSL parser + evaluator. Verification context. Audit-log format spec + signer. | pending |
-| 3 | TypeScript bindings (NAPI or WASM — decide week 2). MCP adapter intercepting `tools/call`. | pending |
-| 4 | Shopping-agent demo end-to-end. Negative-case demo: prompt-injection-proof recording. | pending |
-| 5 | Revocation list (signed, refreshable). Optional DPoP-style holder-of-key. Hardening pass. | pending |
-| 6 | Public release: README, threat model, demo video, blog post. | pending |
+| 2 | Caveat DSL parser + evaluator. Verification context. Audit-log format spec + signer. | ✅ landed |
+| 3 | WASM bindings + `@capnagent/core` (TS) + `@capnagent/mcp` adapter. | ✅ landed |
+| 4 | Shopping-agent demo end-to-end (scripted + LLM-driven via Anthropic SDK). Three scenarios. Recording in `docs/demo-direct.gif`. | ✅ landed |
+| 5 | Revocation list (signed, refreshable). 18 tests + integration into `verify_with_context`. DPoP-style holder-of-key deferred to v0.1 (see §9). | ✅ landed |
+| 6 | Public release: README, threat model, demo video, blog post. | in progress |
 
 Explicit non-deliverables in v0: third-party caveats, Datalog, distributed
 verifiers, GUI, multi-tenant audit storage. All deferred to v0.1+.
@@ -242,6 +242,20 @@ hot-patch. Listed here so they don't get lost.
   `\d+(\.\d+)?`, a precision policy (probably "compare as fixed-point
   cents internally"), and tests covering `12.99 vs 12.999` rounding
   edges. Discovered: 2026-04-27 during the LLM demo run.
+- **DPoP-style holder-of-key.** Bind a capability to a public key at
+  issuance time; require every use of the capability to carry a
+  signature over a per-call challenge made with the corresponding
+  private key. Defends against capability theft mid-flight when the
+  attacker doesn't have the private key (the typical case for stolen
+  bearer tokens). Originally scoped into week 5 of v0; deferred
+  because (a) revocation alone is sufficient for the most common
+  capability-theft scenario (server-side knows it's been stolen and
+  publishes the id), and (b) DPoP needs an ed25519/p256 dep + a
+  challenge-derivation policy + new wire-format fields. Plan for
+  v0.1: ed25519 via `ed25519-dalek`, challenge = SHA-256 of the
+  canonical-JSON of the (capability_id, tool, args, now) tuple,
+  optional `holder_of_key` field on `Capability`, new
+  `verify_with_context_and_proof` entry point.
 - **Caveat DSL: disjunctions.** Real-world capabilities often want
   `tool == "checkout.purchase" OR tool == "catalog.search"` — currently
   expressible only by issuing two capabilities. Workable for now (the
@@ -252,3 +266,44 @@ hot-patch. Listed here so they don't get lost.
 - **Receipt schema versioning.** Today's receipt format has no version
   byte. Adding one before v0.1 ships is cheap and avoids a forced
   flag-day later.
+
+## 10. Revocation surface (week 5, shipped)
+
+Threat: capability theft mid-flight. An attacker exfiltrates a
+capability token before its natural expiry. Without revocation, the
+issuer has no recourse — the chain is intact, the caveats hold, and
+the verifier accepts the token until it expires.
+
+Shipped surface:
+
+- `RevocationList { issued_at_ms, revoked: Vec<String>, signature }`
+  — wire-format struct, HMAC-SHA256-signed by the issuer's root key.
+- `Revoker::new(root_key) → revoke / unrevoke / publish(issued_at_ms)`
+  — issuer-side helper. `publish` mints a fresh signed snapshot.
+- `Verifier::with_revocation_list(list) → Result<Self, RevocationError>`
+  — installs a list. Verifies the signature once at install time, not
+  per request.
+- `Verifier::verify_with_context` now has three gates: chain → revocation
+  → caveats. Revoked tokens become `Outcome::Denied` with reason
+  `"capability revoked: <id>"`, **not** an error variant. Rationale: the
+  audit log captures every attempt against a revoked token, which is the
+  signal incident response needs.
+
+Design choices:
+
+- **Same root key as the issuer.** No additional key-management surface.
+- **Identifiers sorted before signing.** Deterministic byte layout, replay-stable.
+- **Append-only logically; physical format is a fresh snapshot per publish.**
+  A new list with later `issued_at_ms` supersedes earlier lists. Verifiers
+  that hold both should prefer the newer one — that policy lives at the
+  caller, not in the core.
+- **Staleness is the caller's policy, not the core's.** Some deployments
+  want fresh-within-60-seconds; some want fresh-within-an-hour. The core
+  exposes `issued_at_ms` and lets the operator decide.
+
+Out of scope:
+
+- Distribution of the list (HTTP, pub-sub, gossip) — operator decision.
+- Compact representations (Bloom filters, sparse merkle) — irrelevant
+  at the scale capnagent is designed for.
+- Cross-issuer revocation federation — single-issuer is locked for v0.

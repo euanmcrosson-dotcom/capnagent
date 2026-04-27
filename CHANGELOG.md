@@ -8,6 +8,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+
+- **Week 5 — signed revocation list.** New `revocation` module exposes
+  `RevocationList` (HMAC-signed wire format), `Revoker` (issuer-side
+  helper), and `RevocationError`. `Verifier::with_revocation_list(list)`
+  installs a list after verifying its signature once; subsequent
+  `verify_with_context` calls add a third gate (chain → revocation →
+  caveats). Revoked capabilities produce `Outcome::Denied` with reason
+  `"capability revoked: <id>"`, **not** an error — the audit log
+  captures every attempt against a stolen token, exactly the signal
+  incident response needs. 18 new tests covering signature tamper
+  resistance, key isolation, runtime swap, install-time signature
+  validation, and the deny-but-audit semantics. DPoP holder-of-key
+  deferred to v0.1 (see `docs/DESIGN.md` §9).
+
 ### Fixed
 
 - **shopping-agent demo: legitimate purchase blocked by DSL float

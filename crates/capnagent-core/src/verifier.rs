@@ -21,11 +21,18 @@ use crate::audit::{AuditError, Auditor, Outcome, Receipt};
 use crate::capability::{chain_caveat, Capability, Caveat};
 use crate::caveat_dsl;
 use crate::context::Context;
+use crate::revocation::{RevocationError, RevocationList};
 use crate::{Error, Result};
 
 /// Verifies capability tokens against the root key.
 pub struct Verifier {
     root_key: Vec<u8>,
+    /// Optional revocation list. If present, capabilities whose
+    /// identifiers appear in the list are denied at verification time
+    /// even if the chain and caveats are otherwise valid. The list's
+    /// own signature is checked when it is attached, not on every
+    /// verify call.
+    revocation_list: Option<RevocationList>,
 }
 
 /// The result of a successful verification — borrows the verified capability.
@@ -42,7 +49,39 @@ impl Verifier {
     pub fn new(key: &[u8]) -> Self {
         Self {
             root_key: key.to_vec(),
+            revocation_list: None,
         }
+    }
+
+    /// Attach a [`RevocationList`] to this verifier. The list's
+    /// signature is verified once here against the root key; if it
+    /// fails, the call returns [`RevocationError::InvalidSignature`]
+    /// and the list is *not* installed. Subsequent
+    /// [`Verifier::verify_with_context`] calls will deny any
+    /// capability whose identifier appears in the list (with an
+    /// audit-loggable [`Outcome::Denied`] outcome).
+    pub fn with_revocation_list(
+        mut self,
+        list: RevocationList,
+    ) -> std::result::Result<Self, RevocationError> {
+        list.verify_signature(&self.root_key)?;
+        self.revocation_list = Some(list);
+        Ok(self)
+    }
+
+    /// Drop any installed revocation list.
+    #[must_use]
+    pub fn without_revocation_list(mut self) -> Self {
+        self.revocation_list = None;
+        self
+    }
+
+    /// Returns the currently-installed revocation list, if any. Useful
+    /// for inspecting state during testing or for surfacing the
+    /// `issued_at_ms` of a stale list to operators.
+    #[must_use]
+    pub fn revocation_list(&self) -> Option<&RevocationList> {
+        self.revocation_list.as_ref()
     }
 
     /// Recompute the HMAC chain for `cap` and compare against its signature
@@ -100,11 +139,20 @@ impl Verifier {
         // capability and decided X".
         self.verify(cap)?;
 
-        // Leg 2 — caveat evaluation. Any failure becomes a Denied outcome
-        // with a short, reproducible reason.
-        let outcome = match evaluate_all(&cap.caveats, ctx) {
-            Ok(()) => Outcome::Allowed,
+        // Leg 2 — revocation. Cryptographically intact tokens may still
+        // be denied here if the issuer has explicitly revoked them.
+        // Revocation is recorded as an Outcome::Denied (not an Err) so
+        // the audit log captures every attempt against a revoked token —
+        // exactly the signal incident response needs ("when did the
+        // attacker last try the stolen capability?").
+        let outcome = match check_revocation(cap, self.revocation_list.as_ref()) {
             Err(reason) => Outcome::Denied { reason },
+            Ok(()) => match evaluate_all(&cap.caveats, ctx) {
+                // Leg 3 — caveat evaluation. Any failure becomes a Denied
+                // outcome with a short, reproducible reason.
+                Ok(()) => Outcome::Allowed,
+                Err(reason) => Outcome::Denied { reason },
+            },
         };
 
         // Leg 3 — sign. Audit signing is infallible at the type level
@@ -114,6 +162,21 @@ impl Verifier {
         // shape, so this is defensive.
         Ok(auditor.sign(cap, ctx, outcome))
     }
+}
+
+/// Returns `Err(reason)` if `list` is `Some` and contains `cap.identifier`,
+/// otherwise `Ok(())`. Lifted out of `verify_with_context` so it stays
+/// trivially auditable.
+fn check_revocation(
+    cap: &Capability,
+    list: Option<&RevocationList>,
+) -> std::result::Result<(), String> {
+    if let Some(list) = list {
+        if list.contains(&cap.identifier) {
+            return Err(format!("capability revoked: {}", cap.identifier));
+        }
+    }
+    Ok(())
 }
 
 /// Walks the caveats once, parsing and evaluating each. Returns `Ok(())` if

@@ -25,7 +25,7 @@ capnagent denied the wire on capability-scope grounds —
 the user's direct request exceeded what the issued capability permits.
 ```
 
-## Status: v0 (weeks 1–4 shipped)
+## Status: v0 (weeks 1–5 shipped)
 
 | Week | Deliverable | Status |
 |---:|---|:---:|
@@ -33,12 +33,12 @@ the user's direct request exceeded what the issued capability permits.
 | 2 | Caveat DSL parser + evaluator. Verifier-controlled `Context`. Audit-log signer. 99 tests across 4 targets. | ✅ |
 | 3 | WASM bindings + `@capnagent/core` (TS) + `@capnagent/mcp` adapter. 55 vitest cases. | ✅ |
 | 4 | Shopping-agent demo (scripted + LLM-driven via Anthropic SDK). 7 scenarios across deterministic + live API. | ✅ |
-| 5 | Revocation list + DPoP-style holder-of-key. | next |
-| 6 | Public release. | pending |
+| 5 | Signed revocation list + integrated 3-gate verify pipeline. 18 tests. DPoP holder-of-key deferred to v0.1. | ✅ |
+| 6 | Public release. | in progress |
 
-CI runs **178 tests** on every push (Rust property + integration, WASM
-smoke, TS unit, scripted demo); 3 additional opt-in live-API tests run
-locally with `ANTHROPIC_API_KEY` set.
+CI runs **196 tests** on every push (Rust property + integration +
+revocation, WASM smoke, TS unit, scripted demo); 3 additional opt-in
+live-API tests run locally with `ANTHROPIC_API_KEY` set.
 
 ## What's in the repo
 

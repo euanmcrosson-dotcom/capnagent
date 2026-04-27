@@ -24,6 +24,7 @@
 pub mod audit;
 pub mod caveat_dsl;
 pub mod context;
+pub mod revocation;
 
 mod capability;
 mod error;
@@ -43,3 +44,4 @@ pub use verifier::{Verified, Verifier, VerifyError};
 pub use audit::{AuditError, AuditLog, Auditor, ContextSummary, Outcome, Receipt};
 pub use caveat_dsl::{DslError, Predicate};
 pub use context::{Context, ContextBuilder};
+pub use revocation::{RevocationError, RevocationList, Revoker};
