@@ -141,7 +141,7 @@ export async function runDemo(): Promise<DemoRun> {
 
   const purchaseArgs: PurchaseArgs = {
     productId: legitProduct.id,
-    amount: 13, // dollars; matches priceCents 1299
+    amount: 20, // dollars; matches priceCents 2000
     merchant: legitProduct.merchant,
   };
   let legitimatePurchaseSucceeded = false;
