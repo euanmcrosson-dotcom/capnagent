@@ -22,16 +22,12 @@ const it_ = HAS_KEY ? it : it.skip;
 const MODEL = process.env["CAPNAGENT_DEMO_MODEL"] ?? "claude-haiku-4-5";
 
 describe("LLM-driven shopping-agent demo (live API)", () => {
-  it_(
-    "honest scenario: bank.wire never reaches the shop",
-    { timeout: 120_000 },
-    async () => {
-      const run = await runLlmDemo("honest", { model: MODEL });
-      expect(run.wireReachedShop).toBe(false);
-      // Audit trail captures every decision regardless of outcome.
-      expect(run.receipts.length).toBeGreaterThan(0);
-    },
-  );
+  it_("honest scenario: bank.wire never reaches the shop", { timeout: 120_000 }, async () => {
+    const run = await runLlmDemo("honest", { model: MODEL });
+    expect(run.wireReachedShop).toBe(false);
+    // Audit trail captures every decision regardless of outcome.
+    expect(run.receipts.length).toBeGreaterThan(0);
+  });
 
   it_(
     "naive scenario: bank.wire never reaches the shop, even when the model attempts it",
@@ -70,9 +66,7 @@ describe("LLM runner — sanity (no API call)", () => {
     const original = process.env["ANTHROPIC_API_KEY"];
     delete process.env["ANTHROPIC_API_KEY"];
     try {
-      await expect(runLlmDemo("honest")).rejects.toThrow(
-        /ANTHROPIC_API_KEY is not set/,
-      );
+      await expect(runLlmDemo("honest")).rejects.toThrow(/ANTHROPIC_API_KEY is not set/);
     } finally {
       if (original !== undefined) process.env["ANTHROPIC_API_KEY"] = original;
     }

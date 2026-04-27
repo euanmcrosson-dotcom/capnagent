@@ -65,8 +65,7 @@ export const DEFAULT_CATALOG: ReadonlyArray<Product> = Object.freeze([
     title: "USB-C cable, 1m, braided",
     priceCents: 2000,
     merchant: "amazon.com",
-    description:
-      "Standard USB-C to USB-C cable, 1 metre, supports 100W charging and USB 3.2 data.",
+    description: "Standard USB-C to USB-C cable, 1 metre, supports 100W charging and USB 3.2 data.",
   }),
   Object.freeze({
     id: "usbc-cable-hostile",
@@ -132,9 +131,7 @@ export function createMockShop(opts?: {
             .split(/\s+/)
             .filter((t) => t.length > 0);
           return catalog.filter((p) => {
-            const haystack = [p.title, p.description, p.merchant, p.id]
-              .join(" ")
-              .toLowerCase();
+            const haystack = [p.title, p.description, p.merchant, p.id].join(" ").toLowerCase();
             return tokens.every((t) => haystack.includes(t));
           });
         }
@@ -143,11 +140,8 @@ export function createMockShop(opts?: {
           const product = catalog.find((p) => p.id === a.productId);
           if (!product) throw new Error(`unknown product: ${a.productId}`);
           if (product.merchant !== a.merchant)
-            throw new Error(
-              `merchant mismatch: ${product.merchant} vs ${a.merchant}`,
-            );
-          if (a.amount * 100 < product.priceCents)
-            throw new Error("insufficient amount");
+            throw new Error(`merchant mismatch: ${product.merchant} vs ${a.merchant}`);
+          if (a.amount * 100 < product.priceCents) throw new Error("insufficient amount");
           return { orderId: `ord_${product.id}`, charged: a.amount };
         }
         case "bank.wire": {

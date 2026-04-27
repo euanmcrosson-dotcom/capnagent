@@ -67,10 +67,11 @@ async function main(): Promise<void> {
 
   if (!process.env["ANTHROPIC_API_KEY"]) {
     console.error(
-      `${RED}ANTHROPIC_API_KEY is not set.${RESET}\n` +
-        "Export it and re-run, e.g.:\n" +
-        "  export ANTHROPIC_API_KEY=sk-ant-...\n" +
-        "  npm run demo:llm\n",
+      `${RED}ANTHROPIC_API_KEY is not set.${RESET}
+Export it and re-run, e.g.:
+  export ANTHROPIC_API_KEY=sk-ant-...
+  npm run demo:llm
+`,
     );
     process.exit(1);
   }

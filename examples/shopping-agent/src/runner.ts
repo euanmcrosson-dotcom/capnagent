@@ -19,19 +19,8 @@
  * the model.
  */
 
-import {
-  Auditor,
-  type Capability,
-  type Context,
-  Issuer,
-  Verifier,
-  init,
-} from "@capnagent/core";
-import {
-  CapabilityDeniedError,
-  type WrapOptions,
-  wrapMCPClient,
-} from "@capnagent/mcp";
+import { Auditor, type Capability, type Context, Issuer, Verifier, init } from "@capnagent/core";
+import { CapabilityDeniedError, type WrapOptions, wrapMCPClient } from "@capnagent/mcp";
 
 import {
   type CallLog,
@@ -121,14 +110,8 @@ export async function runDemo(): Promise<DemoRun> {
   const receipts: unknown[] = [];
 
   const shop = createMockShop();
-  const browseGuard = wrapMCPClient(
-    shop,
-    makeOptions({ capability: browseCap, receipts }),
-  );
-  const buyGuard = wrapMCPClient(
-    shop,
-    makeOptions({ capability: buyCap, receipts }),
-  );
+  const browseGuard = wrapMCPClient(shop, makeOptions({ capability: browseCap, receipts }));
+  const buyGuard = wrapMCPClient(shop, makeOptions({ capability: buyCap, receipts }));
 
   // ── Scenario 1: legitimate USB-C cable purchase ─────────────────────
   // Agent uses the browse-guard for the read tool, then the buy-guard
@@ -168,8 +151,7 @@ export async function runDemo(): Promise<DemoRun> {
     if (e instanceof CapabilityDeniedError) {
       hostileWireDenied = true;
       const outcome = e.receipt.outcome;
-      hostileWireDenialReason =
-        outcome.kind === "denied" ? outcome.reason : null;
+      hostileWireDenialReason = outcome.kind === "denied" ? outcome.reason : null;
     } else {
       throw e;
     }

@@ -23,9 +23,7 @@ describe("shopping-agent demo", () => {
     // ── the load-bearing assertion ───────────────────────────────────
     // bank.wire MUST NOT have reached the underlying mock shop. If it
     // did, the capability boundary failed and the demo is broken.
-    const wireCalls = run.underlyingCalls.filter(
-      (c) => c.tool === "bank.wire",
-    );
+    const wireCalls = run.underlyingCalls.filter((c) => c.tool === "bank.wire");
     expect(wireCalls).toEqual([]);
 
     // ── audit trail ──────────────────────────────────────────────────

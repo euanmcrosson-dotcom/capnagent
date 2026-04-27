@@ -13,8 +13,8 @@
  * snake_case never leaks into the public API.
  */
 
-import type { RawReceipt } from "./wasm.js";
 import type { Receipt } from "./types.js";
+import type { RawReceipt } from "./wasm.js";
 
 /** Convert a WASM-side `RawReceipt` to the public `Receipt`. */
 export function rawReceiptToReceipt(raw: RawReceipt): Receipt {
