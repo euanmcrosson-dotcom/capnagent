@@ -26,14 +26,18 @@ const mocks = vi.hoisted(() => ({
   issuerIssue: vi.fn(),
   builderCaveat: vi.fn(),
   builderBuild: vi.fn(),
+  builderHolderOfKey: vi.fn(),
   capParse: vi.fn(),
   capSerialize: vi.fn(),
   capAttenuate: vi.fn(),
+  capHolderOfKey: vi.fn<() => Uint8Array | undefined>(() => undefined),
   verifierCtor: vi.fn(),
   verifierVerify: vi.fn(),
   verifierVerifyCtx: vi.fn(),
+  verifierVerifyProof: vi.fn(),
   auditorCtor: vi.fn(),
   auditorVerify: vi.fn(),
+  popChallengeFor: vi.fn<() => Uint8Array>(() => new Uint8Array(32).fill(0xc1)),
 }));
 
 // Mock-class design: the wrapper in `index.ts` calls instance methods on
@@ -56,6 +60,9 @@ vi.mock("../wasm.js", () => {
       mocks.capAttenuate(predicate);
       return new WasmCapability();
     }
+    get holderOfKey(): Uint8Array | undefined {
+      return mocks.capHolderOfKey();
+    }
     free(): void {
       /* no-op */
     }
@@ -63,6 +70,10 @@ vi.mock("../wasm.js", () => {
   class WasmCapabilityBuilder {
     caveat(predicate: string): WasmCapabilityBuilder {
       mocks.builderCaveat(predicate);
+      return this;
+    }
+    holderOfKey(pubkey: Uint8Array): WasmCapabilityBuilder {
+      mocks.builderHolderOfKey(pubkey);
       return this;
     }
     build(): WasmCapability {
@@ -96,6 +107,15 @@ vi.mock("../wasm.js", () => {
     verifyWithContext(cap: WasmCapability, ctx: unknown, auditor: WasmAuditor): RawReceipt {
       return mocks.verifierVerifyCtx(cap, ctx, auditor) as RawReceipt;
     }
+    verifyWithProof(
+      cap: WasmCapability,
+      ctx: unknown,
+      auditor: WasmAuditor,
+      challenge: Uint8Array,
+      proof: Uint8Array,
+    ): RawReceipt {
+      return mocks.verifierVerifyProof(cap, ctx, auditor, challenge, proof) as RawReceipt;
+    }
     free(): void {
       /* no-op */
     }
@@ -118,6 +138,7 @@ vi.mock("../wasm.js", () => {
     Capability: WasmCapability,
     Verifier: WasmVerifier,
     Auditor: WasmAuditor,
+    popChallengeFor: mocks.popChallengeFor,
   };
 });
 
@@ -412,5 +433,117 @@ describe("error mapping", () => {
     });
     const verifier = new m.Verifier(new Uint8Array(32));
     expect(() => verifier.verify(m.Capability.parse("tok"))).toThrow(m.CapabilityChainError);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// v0.1 holder-of-key surface
+// ---------------------------------------------------------------------------
+
+describe("holder-of-key (v0.1)", () => {
+  const PUB = new Uint8Array(32).fill(0x77);
+  const CHALLENGE = new Uint8Array(32).fill(0xc1);
+  const PROOF = new Uint8Array(64).fill(0x55);
+
+  it("CapabilityBuilder.holderOfKey forwards the key bytes to wasm before any caveat()", async () => {
+    const m = await loadFresh();
+    await m.init();
+    const cap = m.Issuer.fromKey(new Uint8Array(32))
+      .issue("buy")
+      .holderOfKey(PUB)
+      .caveat(`tool == "checkout.purchase"`)
+      .build();
+    expect(mocks.builderHolderOfKey).toHaveBeenCalledTimes(1);
+    expect(mocks.builderHolderOfKey).toHaveBeenCalledWith(PUB);
+    // Ordering invariant: holderOfKey was registered before the first caveat.
+    const hokOrder = mocks.builderHolderOfKey.mock.invocationCallOrder[0] ?? -1;
+    const caveatOrder = mocks.builderCaveat.mock.invocationCallOrder[0] ?? -1;
+    expect(hokOrder).toBeLessThan(caveatOrder);
+    expect(cap).toBeInstanceOf(m.Capability);
+  });
+
+  it("Capability.holderOfKey getter returns the wasm-side bytes for hok tokens", async () => {
+    const m = await loadFresh();
+    await m.init();
+    mocks.capHolderOfKey.mockReturnValueOnce(PUB);
+    const cap = m.Capability.parse("tok");
+    expect(cap.holderOfKey).toEqual(PUB);
+  });
+
+  it("Capability.holderOfKey returns undefined for non-hok tokens", async () => {
+    const m = await loadFresh();
+    await m.init();
+    mocks.capHolderOfKey.mockReturnValueOnce(undefined);
+    const cap = m.Capability.parse("tok");
+    expect(cap.holderOfKey).toBeUndefined();
+  });
+
+  it("Verifier.verifyWithProof translates the raw receipt the same way verifyWithContext does", async () => {
+    const m = await loadFresh();
+    await m.init();
+    mocks.verifierVerifyProof.mockReturnValueOnce(SAMPLE_RAW);
+
+    const verifier = new m.Verifier(new Uint8Array(32));
+    const auditor = new m.Auditor(new Uint8Array(32));
+    const cap = m.Capability.parse("tok");
+    const receipt = verifier.verifyWithProof(
+      cap,
+      { caller: "agent:planner", tool: "http.post", args: {} },
+      auditor,
+      CHALLENGE,
+      PROOF,
+    );
+
+    expect(receipt.capabilityIdentifier).toBe("buy");
+    expect(receipt.outcome).toEqual({ kind: "allowed" });
+    expect(Object.isFrozen(receipt.caveats)).toBe(true);
+
+    // Args were forwarded unwrapped — the wrapper hands wasm the inner
+    // capability handle, the public ctx (camelCase), the inner auditor
+    // handle, and the raw byte arrays.
+    const call = mocks.verifierVerifyProof.mock.calls[0];
+    expect(call?.[3]).toBe(CHALLENGE);
+    expect(call?.[4]).toBe(PROOF);
+  });
+
+  it("Verifier.verifyWithProof routes a denied proof through unchanged", async () => {
+    const m = await loadFresh();
+    await m.init();
+    mocks.verifierVerifyProof.mockReturnValueOnce({
+      ...SAMPLE_RAW,
+      outcome: { kind: "denied", reason: "holder-of-key proof failed" },
+    });
+    const verifier = new m.Verifier(new Uint8Array(32));
+    const auditor = new m.Auditor(new Uint8Array(32));
+    const r = verifier.verifyWithProof(
+      m.Capability.parse("tok"),
+      { caller: "x", tool: "y", args: 1 },
+      auditor,
+      CHALLENGE,
+      PROOF,
+    );
+    expect(r.outcome).toEqual({ kind: "denied", reason: "holder-of-key proof failed" });
+  });
+
+  it("popChallengeFor delegates to the wasm free function and returns its bytes", async () => {
+    const m = await loadFresh();
+    await m.init();
+    // mockReset() in beforeEach clears the default impl, so reinstate it here.
+    mocks.popChallengeFor.mockReturnValueOnce(new Uint8Array(32).fill(0xc1));
+    const ctx = { caller: "agent:planner", tool: "http.post", args: {} };
+    const out = m.popChallengeFor(m.Capability.parse("tok"), ctx);
+    expect(out).toEqual(new Uint8Array(32).fill(0xc1));
+    expect(mocks.popChallengeFor).toHaveBeenCalledTimes(1);
+  });
+
+  it("popChallengeFor throws CapabilityError before init()", async () => {
+    const m = await loadFresh();
+    expect(() =>
+      m.popChallengeFor(undefined as unknown as InstanceType<typeof m.Capability>, {
+        caller: "x",
+        tool: "y",
+        args: 1,
+      }),
+    ).toThrow(m.CapabilityError);
   });
 });

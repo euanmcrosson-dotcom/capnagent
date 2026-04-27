@@ -159,6 +159,17 @@ export class Capability {
     ensureReady();
     return this._inner.identifier;
   }
+
+  /**
+   * The 32-byte ed25519 public key this capability is bound to, or
+   * `undefined` for non-hok tokens. The binding is folded into the HMAC
+   * chain at issuance so it cannot be added, removed, or changed after
+   * the fact — see `docs/DESIGN.md` §11.
+   */
+  get holderOfKey(): Uint8Array | undefined {
+    ensureReady();
+    return this._inner.holderOfKey;
+  }
 }
 
 /** Builder returned from `Issuer.issue`. Append caveats, then `build`. */
@@ -177,6 +188,24 @@ export class CapabilityBuilder {
     try {
       // wasm-bindgen returns the same builder; re-wrap for type cleanliness.
       return new CapabilityBuilder(this._inner.caveat(predicate));
+    } catch (e) {
+      mapWasmError(e, "generic");
+    }
+  }
+
+  /**
+   * Bind the in-progress capability to a 32-byte ed25519 public key
+   * (DPoP-style holder-of-key). Must be called BEFORE any `.caveat()`
+   * call — the Rust core asserts hok-first ordering and will throw
+   * otherwise. The binding is folded into the HMAC chain so it cannot
+   * be added, removed, or changed by any holder downstream.
+   *
+   * See `docs/DESIGN.md` §11 for the threat model and trade-offs.
+   */
+  holderOfKey(pubkey: Uint8Array): CapabilityBuilder {
+    ensureReady();
+    try {
+      return new CapabilityBuilder(this._inner.holderOfKey(pubkey));
     } catch (e) {
       mapWasmError(e, "generic");
     }
@@ -298,5 +327,59 @@ export class Verifier {
     } catch (e) {
       mapWasmError(e, "either");
     }
+  }
+
+  /**
+   * Holder-of-key verification: chain → proof → revocation → caveats.
+   *
+   * Required entry point for capabilities that were bound with
+   * `CapabilityBuilder.holderOfKey(pubkey)` at issuance time.
+   * `challenge` is the bytes the holder signed (use {@link popChallengeFor}
+   * for the standard derivation, or supply a deployment-specific value
+   * that layers in nonces / antireplay state). `proof` is the 64-byte
+   * ed25519 signature.
+   *
+   * Bad proofs become a `Receipt` with `outcome.kind === "denied"` and
+   * a reason string — same audit-loggable shape as a caveat denial. A
+   * bad chain still throws `CapabilityChainError`; a tampered receipt
+   * becomes `CapabilityAuditError`. See `docs/DESIGN.md` §11 for the
+   * deny-vs-throw rationale.
+   */
+  verifyWithProof(
+    cap: Capability,
+    ctx: Context,
+    auditor: Auditor,
+    challenge: Uint8Array,
+    proof: Uint8Array,
+  ): Receipt {
+    ensureReady();
+    try {
+      const raw = this._inner.verifyWithProof(cap._inner, ctx, auditor._inner, challenge, proof);
+      return rawReceiptToReceipt(raw);
+    } catch (e) {
+      mapWasmError(e, "either");
+    }
+  }
+}
+
+/**
+ * Standard proof-of-possession challenge derivation for a `(cap, ctx)`
+ * pair: `SHA-256(canonical-JSON({ id, tool, args_hash, now_ms }))`.
+ *
+ * Holders use this on their side to compute what to sign; verifiers
+ * use the same function on the other side to compute what to compare
+ * against. Both sides must agree bytewise — that is the whole point.
+ *
+ * Returns the 32-byte hash. Deployments that need to layer in extra
+ * state (nonces, antireplay, request-shape binding) can compute their
+ * own challenge bytes and pass them to {@link Verifier.verifyWithProof}
+ * directly; this function is the documented default.
+ */
+export function popChallengeFor(cap: Capability, ctx: Context): Uint8Array {
+  ensureReady();
+  try {
+    return wasm.popChallengeFor(cap._inner, ctx);
+  } catch (e) {
+    mapWasmError(e, "generic");
   }
 }
