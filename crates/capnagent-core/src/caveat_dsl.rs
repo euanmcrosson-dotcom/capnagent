@@ -21,15 +21,24 @@
 //! # Grammar (informally)
 //!
 //! ```text
-//! predicate ::= ident op value
-//! ident     ::= bare_ident ("." bare_ident)*
-//! op        ::= "==" | "!=" | "<=" | ">=" | "<" | ">" | "matches"
-//! value     ::= string | number | timestamp
-//! string    ::= '"' ( char | '\\' ('n'|'t'|'\\'|'"') )* '"'
-//! number    ::= "-"? digit+ ("_" unit)?
-//! unit      ::= usd | eur | gbp | cents | ms | s
-//! timestamp ::= "@" rfc3339
+//! predicate  ::= ident op value
+//! ident      ::= bare_ident ("." bare_ident)*
+//! op         ::= "==" | "!=" | "<=" | ">=" | "<" | ">" | "matches"
+//! value      ::= string | number | timestamp
+//! string     ::= '"' ( char | '\\' ('n'|'t'|'\\'|'"') )* '"'
+//! number     ::= integer fractional? ("_" unit)?
+//! integer    ::= "-"? digit+
+//! fractional ::= "." digit+
+//! unit       ::= usd | eur | gbp | cents | ms | s
+//! timestamp  ::= "@" rfc3339
 //! ```
+//!
+//! v0.1 widened `number` to accept decimals (`12.99`, `0.01`, `-1.5_usd`).
+//! A leading dot (`.99`), a trailing dot (`12.`), or multiple dots
+//! (`12.99.5`) are still rejected: an LLM emitting `12.99` for a price is
+//! a real production case (the live shopping-agent demo surfaced it),
+//! but those three malformed shapes are unambiguous typos that should
+//! fail closed rather than be silently coerced.
 //!
 //! The §2.2 BNF lists `bare_ident "." bare_ident` (two segments). The reserved
 //! idents table in the same section requires `arg.<key>.<key>...`, which is
@@ -154,7 +163,13 @@ impl Unit {
 #[derive(Debug, Clone)]
 enum Value {
     String(String),
-    Number(i64, Option<Unit>),
+    /// (value, unit). v0 carried `i64` here; v0.1 widened to `f64` so the
+    /// DSL can accept decimal literals (`12.99`, `0.01`, `-1.5_usd`) and
+    /// compare them against decimal JSON args without a type-mismatch
+    /// denial. Integer literals (`50`) and integer JSON args still parse
+    /// — they're stored as the corresponding `f64` (e.g. `50.0`). See
+    /// `apply_op` for the equality-and-ordering policy.
+    Number(f64, Option<Unit>),
     /// (seconds since unix epoch, sub-second nanos).
     Timestamp(i64, u32),
 }
@@ -404,7 +419,7 @@ impl<'a> Parser<'a> {
         if self.peek() == Some('-') {
             self.bump();
         }
-        let digits_start = self.pos;
+        let int_digits_start = self.pos;
         while let Some(c) = self.peek() {
             if c.is_ascii_digit() {
                 self.bump();
@@ -412,15 +427,48 @@ impl<'a> Parser<'a> {
                 break;
             }
         }
-        if self.pos == digits_start {
+        // The integer part must contain at least one digit. This rejects
+        // the leading-dot case (`-.5`) — the bare `.99` shape is rejected
+        // earlier by `parse_value`, which only enters `parse_number` on
+        // `-` or a digit.
+        if self.pos == int_digits_start {
             return Err(DslError::Parse(format!(
                 "expected digits in number at byte {start}"
             )));
         }
-        let int_text = &self.src[start..self.pos];
-        let value: i64 = int_text
+
+        // Optional fractional part. v0.1 addition: `12.99`, `0.01`. The
+        // BNF requires at least one digit AFTER the dot — a trailing dot
+        // (`12.`) is a parse error; treating `12.` as `12.0` would mask
+        // a typo on a security boundary. A second `.` (e.g. `12.99.5`)
+        // is left in the stream and surfaces as "trailing garbage" from
+        // the top-level parser, anchored at the second dot's position.
+        if self.peek() == Some('.') {
+            self.bump();
+            let frac_digits_start = self.pos;
+            while let Some(c) = self.peek() {
+                if c.is_ascii_digit() {
+                    self.bump();
+                } else {
+                    break;
+                }
+            }
+            if self.pos == frac_digits_start {
+                return Err(DslError::Parse(format!(
+                    "expected digits after '.' in number at byte {start}"
+                )));
+            }
+        }
+
+        let num_text = &self.src[start..self.pos];
+        let value: f64 = num_text
             .parse()
-            .map_err(|e| DslError::Parse(format!("invalid integer {int_text:?}: {e}")))?;
+            .map_err(|e| DslError::Parse(format!("invalid number {num_text:?}: {e}")))?;
+        // The grammar cannot produce a non-finite f64 (no `NaN`/`Inf`
+        // tokens, and any decimal literal in `\d+(\.\d+)?` form is
+        // finite). The `apply_op` NaN trap defends against any
+        // JSON-derived non-finite value, but here we just assert.
+        debug_assert!(value.is_finite(), "BNF cannot produce a non-finite f64");
 
         let unit = if self.peek() == Some('_') {
             self.bump();
@@ -501,10 +549,17 @@ fn resolve_ident(ident: &Ident, ctx: &Context) -> Result<Value, DslError> {
 fn json_to_value(j: &serde_json::Value) -> Option<Value> {
     match j {
         serde_json::Value::String(s) => Some(Value::String(s.clone())),
-        // v0 supports integer numbers only. Floats round-trip through serde_json
-        // with surprising semantics (NaN serialization, base-2 representation),
-        // and the security argument benefits from a small, total comparator.
-        serde_json::Value::Number(n) => n.as_i64().map(|v| Value::Number(v, None)),
+        // v0.1: accept any finite f64 from JSON. `as_f64()` is total over
+        // serde_json's default backend (i64 / u64 / f64) and lossless for
+        // values below 2^53; above that, both args side and caveat side
+        // route through the same `<f64 as From<i64>>`-style rounding, so
+        // they agree. Non-finite (NaN, ±∞) — which standard JSON cannot
+        // encode anyway — is rejected so it cannot sneak past `apply_op`'s
+        // NaN trap and produce silently-false comparisons.
+        serde_json::Value::Number(n) => n
+            .as_f64()
+            .filter(|f| f.is_finite())
+            .map(|v| Value::Number(v, None)),
         _ => None,
     }
 }
@@ -513,13 +568,40 @@ fn json_kind(j: &serde_json::Value) -> &'static str {
     match j {
         serde_json::Value::Null => "null",
         serde_json::Value::Bool(_) => "bool",
-        serde_json::Value::Number(_) => "non-integer number",
+        // Reachable only for non-finite JSON numbers; finite numbers are
+        // converted by `json_to_value` above.
+        serde_json::Value::Number(_) => "non-finite number",
         serde_json::Value::String(_) => "string",
         serde_json::Value::Array(_) => "array",
         serde_json::Value::Object(_) => "object",
     }
 }
 
+/// Apply a comparison operator to two resolved values. Strings, numbers,
+/// and timestamps each have their own per-type rules (see §2.2 type
+/// table); cross-type comparisons fail closed with `TypeMismatch`.
+///
+/// # Numeric equality is exact-binary IEEE-754
+///
+/// v0.1 widened numeric values to `f64`, so `==` and `!=` follow IEEE-754
+/// bit-equality (sign, exponent, mantissa). They are **not** epsilon
+/// comparisons. Concretely:
+///
+/// - `0.1 + 0.2 == 0.3` is `false`. We do not paper over decimal-to-
+///   binary rounding, because epsilon thresholds are application-specific
+///   and inventing one inside a security boundary would let a $50.0001
+///   purchase slip past an `arg.amount == 50` cap. Callers who want
+///   tolerant equality should use `<=` / `>=` (or both) instead.
+/// - `0.0 == -0.0` is `true` (IEEE-754 says so; `partial_cmp` agrees).
+/// - `NaN == NaN` is `false`, but the parser cannot produce NaN and
+///   `json_to_value` filters out non-finite JSON numbers, so this branch
+///   is unreachable in practice. We still explicitly trap NaN below as
+///   defence in depth on a security boundary.
+///
+/// **Recommendation for callers.** Use `<=` / `>=` for fuzzy-equal
+/// quantities (prices, durations, allowances). Reserve `==` for
+/// integer-typed identifiers (counts, flags, version numbers) where
+/// the bit-equality semantics are what you want.
 fn apply_op(op: Op, lhs: &Value, rhs: &Value) -> Result<bool, DslError> {
     match (lhs, rhs) {
         (Value::String(a), Value::String(b)) => match op {
@@ -544,7 +626,22 @@ fn apply_op(op: Op, lhs: &Value, rhs: &Value) -> Result<bool, DslError> {
                     got: format!("number with unit {}", fmt_unit(ua)),
                 });
             }
-            ordered_to_bool(op, a.cmp(b))
+            // NaN guard. The parser cannot emit NaN and `json_to_value`
+            // filters non-finite JSON numbers, so this is belt-and-braces.
+            // If a NaN ever did slip through, `partial_cmp` would return
+            // None and we'd panic on the unwrap — so instead we surface
+            // it as a TypeMismatch and let the caller's audit log record
+            // a clean deny rather than the verifier crashing.
+            if a.is_nan() || b.is_nan() {
+                return Err(DslError::TypeMismatch {
+                    expected: "finite number".into(),
+                    got: "NaN".into(),
+                });
+            }
+            let ord = a
+                .partial_cmp(b)
+                .expect("non-NaN finite f64s have a total ordering via partial_cmp");
+            ordered_to_bool(op, ord)
         }
         (Value::Timestamp(s1, n1), Value::Timestamp(s2, n2)) => {
             ordered_to_bool(op, (*s1, *n1).cmp(&(*s2, *n2)))
