@@ -1,11 +1,45 @@
 import { describe, expect, it, vi } from "vitest";
+
+// See wrap.test.ts for the rationale; same module mock so
+// `popChallengeFor` is deterministic and the real WASM is never loaded.
+const POP_CHALLENGE_BYTES = new Uint8Array(32).fill(0xc1);
+vi.mock("@capnagent/core", () => {
+  class CapabilityError extends Error {
+    constructor(message?: string) {
+      super(message);
+      this.name = "CapabilityError";
+    }
+  }
+  class CapabilityChainError extends CapabilityError {
+    constructor(message?: string) {
+      super(message);
+      this.name = "CapabilityChainError";
+    }
+  }
+  class CapabilityAuditError extends CapabilityError {
+    constructor(message?: string) {
+      super(message);
+      this.name = "CapabilityAuditError";
+    }
+  }
+  return {
+    CapabilityError,
+    CapabilityChainError,
+    CapabilityAuditError,
+    popChallengeFor: vi.fn(() => POP_CHALLENGE_BYTES),
+  };
+});
+
 import { CapabilityAuditError, CapabilityChainError } from "@capnagent/core";
-import { type WrapOptions, guardCall } from "../guard";
+import { MISSING_SIGNER_MESSAGE, type WrapOptions, guardCall } from "../guard";
 import {
+  TEST_PUBKEY,
+  TEST_SIGNATURE,
   allowReceipt,
   denyReceipt,
   fakeAuditor,
   fakeCap,
+  fakeCapability,
   fakeVerifier,
   sampleContext,
 } from "./fixtures";
@@ -139,5 +173,113 @@ describe("guardCall", () => {
 
     expect(ctxFn).toHaveBeenCalledWith("http.post", { qty: 1 });
     expect(verifier.verifyWithContext).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("guardCall — holder-of-key (v0.1)", () => {
+  it("hok-bound capability + signer: signer called with popChallengeFor output, verifyWithProof returns the receipt", async () => {
+    const verifier = fakeVerifier(
+      () => allowReceipt(),
+      () => allowReceipt(),
+    );
+    const signer = vi.fn().mockResolvedValue(TEST_SIGNATURE);
+    const inner = vi.fn().mockResolvedValue(42);
+
+    const out = await guardCall(
+      {
+        capability: fakeCapability(TEST_PUBKEY),
+        auditor: fakeAuditor,
+        verifier,
+        context: () => sampleContext(),
+        signer,
+      },
+      "checkout.purchase",
+      { qty: 1 },
+      inner,
+    );
+
+    expect(out.allowed).toBe(true);
+    if (out.allowed) {
+      expect(out.result).toBe(42);
+    }
+    expect(signer).toHaveBeenCalledWith(POP_CHALLENGE_BYTES);
+    expect(verifier.verifyWithProof).toHaveBeenCalledTimes(1);
+    expect(verifier.verifyWithContext).not.toHaveBeenCalled();
+    expect(inner).toHaveBeenCalledTimes(1);
+  });
+
+  it("hok-bound capability + denied proof: returns { allowed: false } without invoking inner", async () => {
+    const denied = denyReceipt("holder-of-key proof failed");
+    const verifier = fakeVerifier(
+      () => allowReceipt(),
+      () => denied,
+    );
+    const signer = vi.fn().mockResolvedValue(TEST_SIGNATURE);
+    const inner = vi.fn();
+
+    const out = await guardCall(
+      {
+        capability: fakeCapability(TEST_PUBKEY),
+        auditor: fakeAuditor,
+        verifier,
+        context: () => sampleContext(),
+        signer,
+      },
+      "x",
+      {},
+      inner,
+    );
+
+    expect(out.allowed).toBe(false);
+    if (!out.allowed) {
+      expect(out.reason).toBe("holder-of-key proof failed");
+    }
+    expect(inner).not.toHaveBeenCalled();
+    expect(signer).toHaveBeenCalledTimes(1);
+  });
+
+  it("hok-bound capability without signer: rejects synchronously, never builds context, never invokes inner", async () => {
+    const verifier = fakeVerifier(() => allowReceipt());
+    const ctxFn = vi.fn(() => sampleContext());
+    const inner = vi.fn();
+
+    await expect(
+      guardCall(
+        {
+          capability: fakeCapability(TEST_PUBKEY),
+          auditor: fakeAuditor,
+          verifier,
+          context: ctxFn,
+        },
+        "x",
+        {},
+        inner,
+      ),
+    ).rejects.toThrow(MISSING_SIGNER_MESSAGE);
+
+    expect(ctxFn).not.toHaveBeenCalled();
+    expect(verifier.verifyWithProof).not.toHaveBeenCalled();
+    expect(verifier.verifyWithContext).not.toHaveBeenCalled();
+    expect(inner).not.toHaveBeenCalled();
+  });
+
+  it("non-hok capability still goes through verifyWithContext (unchanged path)", async () => {
+    const verifier = fakeVerifier(() => allowReceipt());
+    const inner = vi.fn().mockResolvedValue("ok");
+
+    await guardCall(
+      {
+        capability: fakeCapability(undefined),
+        auditor: fakeAuditor,
+        verifier,
+        context: () => sampleContext(),
+      },
+      "x",
+      {},
+      inner,
+    );
+
+    expect(verifier.verifyWithContext).toHaveBeenCalledTimes(1);
+    expect(verifier.verifyWithProof).not.toHaveBeenCalled();
   });
 });

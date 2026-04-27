@@ -1,5 +1,5 @@
 import { CapabilityDeniedError } from "./errors";
-import { type MCPClientLike, type WrapOptions, __decide } from "./guard";
+import { type MCPClientLike, type WrapOptions, __assertSignerIfHok, __decide } from "./guard";
 
 /**
  * Wrap an MCP client so every `callTool()` is gated by a capability.
@@ -20,8 +20,19 @@ import { type MCPClientLike, type WrapOptions, __decide } from "./guard";
  * Any other property access on the wrapped client is reflected to the
  * original; methods are bound to the original `client` so their `this`
  * remains stable.
+ *
+ * Fails closed if `options.capability.holderOfKey` is set and
+ * `options.signer` is undefined: `wrapMCPClient` itself throws an
+ * `Error` synchronously, BEFORE returning a Proxy that would silently
+ * misbehave on first use.
  */
 export function wrapMCPClient<C extends MCPClientLike>(client: C, options: WrapOptions): C {
+  // Synchronous config gate — surface mis-configured hok options as a
+  // throw at wrap time, not on the first `callTool`. The same check
+  // also runs inside `guardCall` so non-MCP callers get equivalent
+  // behaviour.
+  __assertSignerIfHok(options);
+
   const guardedCallTool = async (name: string, args: unknown): Promise<unknown> => {
     const { receipt } = await __decide(options, name, args);
     if (receipt.outcome.kind === "denied") {

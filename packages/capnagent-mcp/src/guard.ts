@@ -1,3 +1,4 @@
+import { popChallengeFor } from "@capnagent/core";
 import type { Auditor, Capability, Context, Receipt, Verifier } from "@capnagent/core";
 
 /**
@@ -51,6 +52,48 @@ export interface WrapOptions {
    * from the verifier) do not fire `onReceipt`.
    */
   onReceipt?: (r: Receipt) => void | Promise<void>;
+
+  /**
+   * REQUIRED if `capability.holderOfKey` is set; otherwise ignored.
+   *
+   * The wrapper will:
+   *   1. Compute `challenge = popChallengeFor(capability, ctx)`.
+   *   2. Call `signer(challenge)` to get a 64-byte ed25519 signature.
+   *   3. Call `verifier.verifyWithProof(...)` with `(challenge, proof)`.
+   *
+   * If `capability.holderOfKey` is set and `signer` is undefined, the
+   * wrapper throws an `Error("capability is bound to a holder key but
+   * no signer was provided in WrapOptions")` synchronously BEFORE any
+   * tool call — same fail-closed semantics as the Rust core's
+   * `Verifier::verify_with_context` denying hok-bound tokens.
+   *
+   * The signer may run in-memory (e.g. `@noble/ed25519`), in a Web
+   * Crypto context, or out-of-process (KMS, HSM, signing service);
+   * capnagent does not take a position. Async signers are awaited.
+   */
+  signer?: (challenge: Uint8Array) => Uint8Array | Promise<Uint8Array>;
+}
+
+/**
+ * The exact error message thrown when a hok-bound capability is wrapped
+ * (or guarded) without a `signer`. Constant so adapters and tests can
+ * assert against it without coupling to the surrounding wording.
+ */
+export const MISSING_SIGNER_MESSAGE =
+  "capability is bound to a holder key but no signer was provided in WrapOptions";
+
+/**
+ * Throws synchronously if `options.capability` is hok-bound but no
+ * `signer` was supplied. Public so `wrapMCPClient` and `guardCall`
+ * share the same fail-closed gate; the message is locked by
+ * {@link MISSING_SIGNER_MESSAGE}.
+ *
+ * @internal — re-export point for wrap.ts; not part of the public API.
+ */
+export function __assertSignerIfHok(options: WrapOptions): void {
+  if (options.capability.holderOfKey !== undefined && options.signer === undefined) {
+    throw new Error(MISSING_SIGNER_MESSAGE);
+  }
 }
 
 /**
@@ -71,9 +114,41 @@ export async function __decide(
   args: unknown,
 ): Promise<{ receipt: Receipt }> {
   const ctx = await Promise.resolve(options.context(toolName, args));
-  const receipt = options.verifier.verifyWithContext(options.capability, ctx, options.auditor);
+  const receipt = await runVerification(options, ctx);
   await fireOnReceipt(options.onReceipt, receipt);
   return { receipt };
+}
+
+/**
+ * Pick the right verification entry point based on whether the
+ * capability is hok-bound. For non-hok caps we go through
+ * `verifyWithContext` (the v0 path); for hok-bound caps we derive the
+ * default proof-of-possession challenge, ask the configured signer to
+ * sign it, and route through `verifyWithProof`.
+ *
+ * The signer is awaited in case it goes out-of-process (KMS / HSM).
+ * Bad proofs come back inside the receipt as `outcome.kind === "denied"`
+ * with a reason string — they are NOT thrown from this function.
+ */
+async function runVerification(options: WrapOptions, ctx: Context): Promise<Receipt> {
+  if (options.capability.holderOfKey !== undefined) {
+    if (!options.signer) {
+      // Caught at config time by `__assertSignerIfHok`; defence-in-depth
+      // here in case a caller invokes `__decide` without going through
+      // `wrapMCPClient` / `guardCall`.
+      throw new Error(MISSING_SIGNER_MESSAGE);
+    }
+    const challenge = popChallengeFor(options.capability, ctx);
+    const proof = await Promise.resolve(options.signer(challenge));
+    return options.verifier.verifyWithProof(
+      options.capability,
+      ctx,
+      options.auditor,
+      challenge,
+      proof,
+    );
+  }
+  return options.verifier.verifyWithContext(options.capability, ctx, options.auditor);
 }
 
 async function fireOnReceipt(
@@ -105,6 +180,9 @@ export async function guardCall<T>(
   args: unknown,
   inner: () => Promise<T>,
 ): Promise<GuardedResult<T>> {
+  // Sync config check — fail-closed BEFORE we evaluate the
+  // ContextProvider, build a challenge, or invoke `inner`.
+  __assertSignerIfHok(options);
   const { receipt } = await __decide(options, toolName, args);
   if (receipt.outcome.kind === "denied") {
     return { allowed: false, reason: receipt.outcome.reason, receipt };

@@ -1,13 +1,53 @@
 import { describe, expect, it, vi } from "vitest";
+
+// Mock `@capnagent/core` so:
+//  - the runtime `popChallengeFor` returns a deterministic value the
+//    hok tests can assert on, AND
+//  - the test never has to load the real WASM artifact (which is a
+//    workspace-wide concern, not this package's job to exercise).
+//
+// Type imports below (`Capability`, `Verifier`, etc.) are erased at
+// runtime so the mock doesn't need to provide them.
+const POP_CHALLENGE_BYTES = new Uint8Array(32).fill(0xc1);
+vi.mock("@capnagent/core", () => {
+  class CapabilityError extends Error {
+    constructor(message?: string) {
+      super(message);
+      this.name = "CapabilityError";
+    }
+  }
+  class CapabilityChainError extends CapabilityError {
+    constructor(message?: string) {
+      super(message);
+      this.name = "CapabilityChainError";
+    }
+  }
+  class CapabilityAuditError extends CapabilityError {
+    constructor(message?: string) {
+      super(message);
+      this.name = "CapabilityAuditError";
+    }
+  }
+  return {
+    CapabilityError,
+    CapabilityChainError,
+    CapabilityAuditError,
+    popChallengeFor: vi.fn(() => POP_CHALLENGE_BYTES),
+  };
+});
+
 import { CapabilityAuditError, CapabilityChainError } from "@capnagent/core";
 import { CapabilityDeniedError } from "../errors";
-import type { MCPClientLike, WrapOptions } from "../guard";
+import { type MCPClientLike, MISSING_SIGNER_MESSAGE, type WrapOptions } from "../guard";
 import { wrapMCPClient } from "../wrap";
 import {
+  TEST_PUBKEY,
+  TEST_SIGNATURE,
   allowReceipt,
   denyReceipt,
   fakeAuditor,
   fakeCap,
+  fakeCapability,
   fakeVerifier,
   sampleContext,
 } from "./fixtures";
@@ -261,5 +301,117 @@ describe("wrapMCPClient — shape preservation", () => {
     await expect(wrapped.callTool("http.post", {})).resolves.toBe("ok");
     await expect(wrapped.listTools()).resolves.toEqual(["http.post", "fs.read"]);
     expect(wrapped.serverName).toBe("shopping-srv");
+  });
+});
+
+describe("wrapMCPClient — holder-of-key (v0.1)", () => {
+  it("hok-bound capability + signer: signer is called with the popChallengeFor output, verifyWithProof is used", async () => {
+    const inner = vi.fn().mockResolvedValue("checkout-ok");
+    const verifier = fakeVerifier(
+      () => allowReceipt(), // verifyWithContext should NOT be invoked on hok path
+      () => allowReceipt(), // verifyWithProof returns allow
+    );
+    const signer = vi.fn().mockResolvedValue(TEST_SIGNATURE);
+
+    const wrapped = wrapMCPClient<MCPClientLike>(
+      { callTool: inner },
+      baseOptions(verifier, { capability: fakeCapability(TEST_PUBKEY), signer }),
+    );
+    const out = await wrapped.callTool("checkout.purchase", { qty: 1 });
+
+    expect(out).toBe("checkout-ok");
+    expect(signer).toHaveBeenCalledTimes(1);
+    expect(signer).toHaveBeenCalledWith(POP_CHALLENGE_BYTES);
+
+    expect(verifier.verifyWithProof).toHaveBeenCalledTimes(1);
+    expect(verifier.verifyWithContext).not.toHaveBeenCalled();
+
+    // Inspect the arguments handed to verifyWithProof: cap, ctx, auditor,
+    // challenge, proof. (Defensive — locks the call shape.)
+    const call = (verifier.verifyWithProof as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(call?.[3]).toBe(POP_CHALLENGE_BYTES);
+    expect(call?.[4]).toBe(TEST_SIGNATURE);
+  });
+
+  it("hok-bound capability + signer returning a Uint8Array directly (sync) is supported", async () => {
+    const inner = vi.fn().mockResolvedValue("ok");
+    const verifier = fakeVerifier(
+      () => allowReceipt(),
+      () => allowReceipt(),
+    );
+    const signer = vi.fn(() => TEST_SIGNATURE); // not a Promise
+
+    const wrapped = wrapMCPClient<MCPClientLike>(
+      { callTool: inner },
+      baseOptions(verifier, { capability: fakeCapability(TEST_PUBKEY), signer }),
+    );
+    await expect(wrapped.callTool("x", {})).resolves.toBe("ok");
+    expect(verifier.verifyWithProof).toHaveBeenCalledTimes(1);
+  });
+
+  it("hok-bound capability without signer: wrapMCPClient throws synchronously, no Proxy returned", () => {
+    const inner = vi.fn();
+    const verifier = fakeVerifier(() => allowReceipt());
+    expect(() =>
+      wrapMCPClient<MCPClientLike>(
+        { callTool: inner },
+        baseOptions(verifier, { capability: fakeCapability(TEST_PUBKEY) }),
+      ),
+    ).toThrow(MISSING_SIGNER_MESSAGE);
+    // Critically: the error fired BEFORE any callTool was issued.
+    expect(inner).not.toHaveBeenCalled();
+  });
+
+  it("non-hok capability (holderOfKey === undefined) takes the v0 path even if a signer is supplied", async () => {
+    const inner = vi.fn().mockResolvedValue("ok");
+    const verifier = fakeVerifier(() => allowReceipt());
+    const signer = vi.fn().mockResolvedValue(TEST_SIGNATURE);
+
+    const wrapped = wrapMCPClient<MCPClientLike>(
+      { callTool: inner },
+      baseOptions(verifier, { capability: fakeCapability(undefined), signer }),
+    );
+    await wrapped.callTool("x", {});
+
+    expect(verifier.verifyWithContext).toHaveBeenCalledTimes(1);
+    expect(verifier.verifyWithProof).not.toHaveBeenCalled();
+    expect(signer).not.toHaveBeenCalled();
+  });
+
+  it("hok deny path: a Receipt with kind: 'denied' becomes CapabilityDeniedError; underlying NOT called", async () => {
+    const inner = vi.fn();
+    const denied = denyReceipt("holder-of-key proof failed");
+    const verifier = fakeVerifier(
+      () => allowReceipt(),
+      () => denied, // verifyWithProof returns a deny receipt
+    );
+    const signer = vi.fn().mockResolvedValue(TEST_SIGNATURE);
+
+    const wrapped = wrapMCPClient<MCPClientLike>(
+      { callTool: inner },
+      baseOptions(verifier, { capability: fakeCapability(TEST_PUBKEY), signer }),
+    );
+    await expect(wrapped.callTool("x", {})).rejects.toBeInstanceOf(CapabilityDeniedError);
+    expect(inner).not.toHaveBeenCalled();
+    expect(signer).toHaveBeenCalledTimes(1);
+  });
+
+  it("hok path: signer that throws bubbles the error out, underlying NOT called", async () => {
+    const inner = vi.fn();
+    const verifier = fakeVerifier(
+      () => allowReceipt(),
+      () => allowReceipt(),
+    );
+    const signer = vi.fn(() => {
+      throw new Error("hardware key unavailable");
+    });
+
+    const wrapped = wrapMCPClient<MCPClientLike>(
+      { callTool: inner },
+      baseOptions(verifier, { capability: fakeCapability(TEST_PUBKEY), signer }),
+    );
+    await expect(wrapped.callTool("x", {})).rejects.toThrow(/hardware key unavailable/);
+    expect(inner).not.toHaveBeenCalled();
+    expect(verifier.verifyWithProof).not.toHaveBeenCalled();
   });
 });
