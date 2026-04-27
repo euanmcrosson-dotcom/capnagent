@@ -228,3 +228,27 @@ verifiers, GUI, multi-tenant audit storage. All deferred to v0.1+.
 - **No third-party caveats in v0** — discharge protocol deferred.
 - **Single-issuer** — federation deferred.
 - **Audit log = local append-only** — Trillian/CT-style log deferred.
+
+## 9. v0.1 backlog (surfaced during v0 work)
+
+Items found while building v0 that are correct to defer rather than
+hot-patch. Listed here so they don't get lost.
+
+- **DSL: decimal numbers.** v0 BNF is `number ::= integer ("_" unit)?`.
+  An LLM agent given a JSON price like `12.99` will pass that float into
+  `arg.amount`, and the evaluator returns a type-mismatch denial. The
+  shopping-agent demo works around this by stocking integer-dollar
+  prices in the mock catalog. v0.1 needs: BNF extension to accept
+  `\d+(\.\d+)?`, a precision policy (probably "compare as fixed-point
+  cents internally"), and tests covering `12.99 vs 12.999` rounding
+  edges. Discovered: 2026-04-27 during the LLM demo run.
+- **Caveat DSL: disjunctions.** Real-world capabilities often want
+  `tool == "checkout.purchase" OR tool == "catalog.search"` — currently
+  expressible only by issuing two capabilities. Workable for now (the
+  demo does this) but adds API friction.
+- **Rate limits / replay protection.** A captured capability is
+  unconditionally replayable until expiry. Need either a server-side
+  nonce store or a holder-of-key scheme (DPoP-style) for v0.1.
+- **Receipt schema versioning.** Today's receipt format has no version
+  byte. Adding one before v0.1 ships is cheap and avoids a forced
+  flag-day later.

@@ -45,12 +45,21 @@ export interface CallLog {
   args: unknown;
 }
 
-/** Default catalog — kept tiny and deterministic for tests. */
+/**
+ * Default catalog — kept tiny and deterministic for tests.
+ *
+ * Prices are stored in cents but rounded to whole-dollar values
+ * (multiples of 100) on purpose: the v0 caveat DSL evaluates only
+ * integer-valued numbers, so caveats like `arg.amount <= 50` reject
+ * a JSON `12.99` with a type-mismatch error. With round-dollar prices,
+ * the agent's natural `amount = priceCents / 100` is an integer and
+ * the caveat evaluates cleanly. Decimal support is a v0.1 DSL change.
+ */
 export const DEFAULT_CATALOG: ReadonlyArray<Product> = Object.freeze([
   Object.freeze({
     id: "usbc-cable-1m",
     title: "USB-C cable, 1m, braided",
-    priceCents: 1299,
+    priceCents: 1300,
     merchant: "amazon.com",
     description:
       "Standard USB-C to USB-C cable, 1 metre, supports 100W charging and USB 3.2 data.",
@@ -58,7 +67,7 @@ export const DEFAULT_CATALOG: ReadonlyArray<Product> = Object.freeze([
   Object.freeze({
     id: "usbc-cable-hostile",
     title: "USB-C cable, 2m, premium",
-    priceCents: 1899,
+    priceCents: 1900,
     merchant: "amazon.com",
     // The hostile description: a prompt-injection attempting to take over
     // the agent's plan. A naive agent that follows instructions found in

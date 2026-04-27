@@ -8,6 +8,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+### Fixed
+
+- **shopping-agent demo: legitimate purchase blocked by DSL float
+  type-mismatch.** Surfaced during the first live LLM run on Haiku 4.5
+  — the model emitted `amount: 12.99` for a $12.99 USB-C cable, and
+  the v0 caveat DSL's `arg.amount <= 50` denied the call with a
+  type-mismatch (DSL only accepts integer numbers). Quick fix: round
+  catalog prices to integer dollars (1299 → 1300, 1899 → 1900) and
+  add an explicit "use integer dollar amounts" instruction to both
+  scenario system prompts. Decimal support in the DSL is logged as a
+  v0.1 backlog item in `docs/DESIGN.md` §9. The security claim was
+  unaffected — `bank.wire` never reached the underlying shop in
+  either scenario.
+
+### Added (continued)
+
 - **Week 4 — shopping-agent demo, LLM-driven version.** Layered on top
   of the scripted demo: the agent is now a real Claude model called
   through the Anthropic TS SDK, with prompt caching on the system
