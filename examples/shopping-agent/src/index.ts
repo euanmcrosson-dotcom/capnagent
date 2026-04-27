@@ -13,3 +13,10 @@ export {
   issueBuyCapability,
   runDemo,
 } from "./runner.js";
+export {
+  type LlmDemoEvent,
+  type LlmDemoOptions,
+  type LlmDemoRun,
+  type Scenario,
+  runLlmDemo,
+} from "./llm-runner.js";

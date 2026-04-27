@@ -8,6 +8,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Week 4 — shopping-agent demo, LLM-driven version.** Layered on top
+  of the scripted demo: the agent is now a real Claude model called
+  through the Anthropic TS SDK, with prompt caching on the system
+  prompt and a manual agentic loop that routes every tool call through
+  `wrapMCPClient`. Two scenarios:
+  - `demo:llm` (honest) — neutral system prompt. Modern Claude usually
+    refuses the prompt-injected wire on its own; capnagent is the
+    defense-in-depth backstop.
+  - `demo:llm-injected` (naive) — system prompt explicitly tells the
+    agent to follow tool-output instructions, provoking the bad
+    behavior. capnagent denies `bank.wire` before the shop sees it.
+  Both scenarios share the load-bearing assertion: `bank.wire` must
+  never reach the underlying mock shop. Vitest spec skips when
+  `ANTHROPIC_API_KEY` is unset, so CI is unaffected. Default model is
+  `claude-opus-4-7`; override with `CAPNAGENT_DEMO_MODEL=claude-haiku-4-5`
+  for cheaper runs.
 - **Week 4 — shopping-agent demo (scripted version).** New
   `examples/shopping-agent` workspace package implements the
   prompt-injection-proof tool-call demo end-to-end. Two
@@ -15,9 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   hostile-product-page injection, and a vitest spec asserting
   the load-bearing claim: even when the agent obeys an injected
   prompt asking it to call `bank.wire`, capnagent denies the call
-  before the underlying shop sees it. 3 vitest cases. No LLM or
-  network in v0; an Anthropic-SDK-driven version is the next
-  milestone.
+  before the underlying shop sees it. 3 vitest cases.
 - **Week 3 — JS/TS surface landed.**
   - **`packages/capnagent`** (`@capnagent/core` on npm) — idiomatic
     TypeScript wrapper around the WASM artifact. Public API:
