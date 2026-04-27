@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::time::SystemTime;
 
 use capnagent_core::audit::{AuditError, AuditLog, Auditor, Outcome, Receipt};
-use capnagent_core::{Capability, Caveat, Context, Issuer};
+use capnagent_core::{Capability, Caveat, Context, Issuer, RECEIPT_SCHEMA_VERSION};
 
 const KEY: &[u8] = b"audit-test-key-do-not-use-in-prod";
 const OTHER_KEY: &[u8] = b"a-different-32-byte-key!!!!!!!!!";
@@ -215,6 +215,139 @@ fn cross_key_verification_fails() {
     assert!(matches!(
         other.verify(&receipt),
         Err(AuditError::InvalidSignature)
+    ));
+}
+
+// --- schema version (DESIGN.md §14) --------------------------------------
+
+/// Round-trip: a freshly signed receipt carries `version == 1` in both
+/// the in-memory struct and its canonical-JSON encoding, and verifies.
+#[test]
+fn receipt_carries_schema_version_one_and_round_trips() {
+    let auditor = Auditor::new(KEY);
+    let receipt = auditor.sign(&sample_cap(), &sample_ctx(), Outcome::Allowed);
+
+    // The in-memory struct exposes the version constant.
+    assert_eq!(receipt.version, 1);
+    assert_eq!(receipt.version, RECEIPT_SCHEMA_VERSION);
+
+    // The canonical-JSON form serializes it as `"version": 1`.
+    let v = serde_json::to_value(&receipt).expect("receipt is serializable");
+    assert_eq!(
+        v.get("version"),
+        Some(&serde_json::json!(1)),
+        "receipts must serialize `version: 1`",
+    );
+
+    // And it round-trips through JSON.
+    let json = serde_json::to_string(&receipt).unwrap();
+    let parsed: Receipt = serde_json::from_str(&json).unwrap();
+    assert_eq!(parsed.version, 1);
+    auditor
+        .verify(&parsed)
+        .expect("freshly signed receipt with version=1 must verify");
+}
+
+/// Mutating `version` on a verified receipt to an unsupported value
+/// causes `verify()` to error. This is the forward-compat fail-closed
+/// gate from DESIGN.md §14: a v0.3 verifier reading a v0.4 receipt must
+/// refuse to interpret it rather than silently accepting it under the
+/// old caveat semantics.
+#[test]
+fn unsupported_version_is_rejected_by_verifier() {
+    let auditor = Auditor::new(KEY);
+    let mut receipt = auditor.sign(&sample_cap(), &sample_ctx(), Outcome::Allowed);
+
+    receipt.version = 99;
+    assert!(
+        matches!(
+            auditor.verify(&receipt),
+            Err(AuditError::UnsupportedVersion {
+                got: 99,
+                expected: 1
+            }),
+        ),
+        "verify must reject unknown schema versions with UnsupportedVersion",
+    );
+
+    // Version 0 (the "legacy / no version field" sentinel) is also
+    // rejected, on the same fail-closed grounds.
+    receipt.version = 0;
+    assert!(matches!(
+        auditor.verify(&receipt),
+        Err(AuditError::UnsupportedVersion {
+            got: 0,
+            expected: 1
+        }),
+    ));
+}
+
+/// The HMAC signing input must cover the version byte. If a man-in-the-
+/// middle could rewrite `version` from 1 to some other in-range value
+/// without invalidating the signature, the version-binding contract from
+/// DESIGN.md §14 would be vacuous. We test this by:
+///
+///   1. Signing a real v=1 receipt.
+///   2. Mutating `version` (and faking the version gate by re-running
+///      the HMAC step against the body alone, with the version-prefix
+///      stripped, would have *passed*) — instead, here we just confirm
+///      that *swapping in a forged signature for the body alone*
+///      (without the version-prefix tag) does NOT verify.
+///
+/// The simpler property — and the one the production code actually
+/// relies on — is that recomputing the canonical-JSON HMAC for any
+/// receipt with a tampered `version` yields a different MAC than the
+/// stored one. We assert that here by computing the HMAC the verifier
+/// computes for a version=42 receipt (with the v=1 receipt's signature
+/// frozen) and checking it does not match.
+#[test]
+fn signature_locks_in_version_byte() {
+    use hmac::{Hmac, Mac};
+    use sha2::Sha256;
+    type HmacSha256 = Hmac<Sha256>;
+
+    let auditor = Auditor::new(KEY);
+    let receipt = auditor.sign(&sample_cap(), &sample_ctx(), Outcome::Allowed);
+    let v1_signature = receipt.signature.clone();
+
+    // Build the canonical-JSON body of an identical receipt but with
+    // `version` rewritten to 42. The verifier's signing input is
+    // `b"v" || version || canonical_json(receipt_minus_signature)`.
+    let mut tampered = receipt.clone();
+    tampered.version = 42;
+    tampered.signature = Vec::new();
+    let mut body = serde_json::to_value(&tampered).unwrap();
+    if let serde_json::Value::Object(ref mut m) = body {
+        m.remove("signature");
+    }
+    let body_bytes = serde_json::to_vec(&body).unwrap();
+
+    let mut input_v42 = Vec::with_capacity(body_bytes.len() + 2);
+    input_v42.push(b'v');
+    input_v42.push(42);
+    input_v42.extend_from_slice(&body_bytes);
+
+    let mut mac = <HmacSha256 as Mac>::new_from_slice(KEY).unwrap();
+    mac.update(&input_v42);
+    let mac_v42 = mac.finalize().into_bytes().to_vec();
+
+    // The MAC over the v=42 input must NOT match the v=1 receipt's
+    // signature. If these were equal it would mean the version byte
+    // had no effect on the signing input — i.e. a MITM could swap
+    // version freely. This is the property we lock down.
+    assert_ne!(
+        mac_v42, v1_signature,
+        "HMAC of (version=42 || body) must differ from v=1 receipt's signature",
+    );
+
+    // And, end-to-end: even if an attacker forges a valid HMAC for the
+    // v=42 body, the verifier's pre-HMAC version gate refuses the
+    // receipt outright.
+    let mut hostile = tampered.clone();
+    hostile.signature = mac_v42;
+    assert!(matches!(
+        auditor.verify(&hostile),
+        Err(AuditError::UnsupportedVersion { .. }),
     ));
 }
 

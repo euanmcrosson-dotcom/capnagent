@@ -9,6 +9,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **v0.2 — receipt schema versioning.** `Receipt` gains a top-of-struct
+  `version: u8` field (currently always `1`, exported as
+  `capnagent_core::RECEIPT_SCHEMA_VERSION`). The field flows through
+  the WASM boundary unchanged — `RawReceipt` and the public TS
+  `Receipt` both grow a `version: number` member, and the
+  `translate.ts` layer passes it through verbatim. Forward-compat
+  fail-closed: `Auditor::verify(receipt)` rejects any receipt whose
+  `version` differs from the build's `RECEIPT_SCHEMA_VERSION` and
+  returns a dedicated `AuditError::UnsupportedVersion { got, expected }`
+  variant so a version-skew miss is distinguishable from a tampering
+  attempt at a glance. The auditor's HMAC input is now
+  `b"v" || [version_byte] || canonical_json(receipt_minus_signature)`,
+  domain-separating the schema version into the MAC so a man-in-the-
+  middle cannot rewrite `version` without invalidating the signature
+  even if the canonical-JSON layer were later to drop it. Three new
+  Rust tests (`receipt_carries_schema_version_one_and_round_trips`,
+  `unsupported_version_is_rejected_by_verifier`,
+  `signature_locks_in_version_byte`) cover the round trip, the
+  fail-closed gate, and the version-locking property of the
+  signature input. DESIGN.md gains a new §14 explaining the
+  motivation, the wire-format-break semantics of bumping the
+  version, and the deployment expectation. Closes the last item on
+  the v0.2-deferred list.
 - **tests: property-based tests for boolean DSL composition.** New
   `crates/capnagent-core/tests/dsl_property_tests.rs` (8 properties,
   256 cases each = 2048 generated inputs per run). Encodes the

@@ -35,6 +35,13 @@ use crate::context::Context;
 
 type HmacSha256 = Hmac<Sha256>;
 
+/// Current receipt schema version. Bumped only on a wire-format break.
+///
+/// See `docs/DESIGN.md` §14 ("Receipt schema versioning") for the
+/// fail-closed forward-compat semantics. A verifier built against
+/// version `N` rejects any receipt whose `version != N`.
+pub const RECEIPT_SCHEMA_VERSION: u8 = 1;
+
 /// A signed record of a single verification decision.
 ///
 /// Receipts are append-only. Once written to an [`AuditLog`] they should
@@ -42,6 +49,10 @@ type HmacSha256 = Hmac<Sha256>;
 /// after-the-fact tampering.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Receipt {
+    /// Receipt schema version. Currently always [`RECEIPT_SCHEMA_VERSION`]
+    /// (== 1). The verifier rejects unknown values fail-closed; bumping
+    /// this is a wire-format break, not a hot upgrade. See DESIGN.md §14.
+    pub version: u8,
     /// The [`Capability::identifier`] of the token that was being verified.
     pub capability_identifier: String,
     /// The full caveat list as it stood at verification time. Order matters.
@@ -108,9 +119,15 @@ impl Auditor {
 
     /// Build and sign a receipt for a verification decision.
     ///
-    /// The signature covers HMAC-SHA256 of the canonical-JSON of the
-    /// receipt with the `signature` field stripped (set to empty during
-    /// signing, then overwritten with the computed MAC).
+    /// The signature covers HMAC-SHA256 of a domain-separated input:
+    /// `b"v" || [version_byte] || canonical_json(receipt_without_signature)`.
+    /// The leading `b"v" || version` tag binds the schema version into
+    /// the MAC so a man-in-the-middle cannot rewrite `version` without
+    /// invalidating the signature — even though `version` is also
+    /// included inside the canonical-JSON body. The redundancy is
+    /// deliberate: the body covers it for free, and the prefix tag
+    /// makes the version-binding contract explicit and self-documenting
+    /// in the signing input.
     pub fn sign(&self, cap: &Capability, ctx: &Context, outcome: Outcome) -> Receipt {
         // Use the verifier-supplied `now` from the Context rather than
         // calling `SystemTime::now()` here. Two reasons:
@@ -129,6 +146,7 @@ impl Auditor {
             .map(|d| d.as_millis() as u64)
             .unwrap_or(0);
         let mut receipt = Receipt {
+            version: RECEIPT_SCHEMA_VERSION,
             capability_identifier: cap.identifier.clone(),
             caveats: cap.caveats.clone(),
             context_summary: ContextSummary {
@@ -140,7 +158,7 @@ impl Auditor {
             timestamp_ms,
             signature: Vec::new(),
         };
-        let bytes = canonical_json_for_signing(&receipt).expect("Receipt is always serializable");
+        let bytes = signing_input(&receipt).expect("Receipt is always serializable");
         receipt.signature = hmac_sign(&self.key, &bytes);
         receipt
     }
@@ -148,11 +166,28 @@ impl Auditor {
     /// Recompute the receipt's signature and constant-time-compare it
     /// against the stored signature.
     ///
-    /// Returns `Ok(())` on a match. Any tampering with any non-`signature`
-    /// field, or any change to the signature bytes, yields
-    /// [`AuditError::InvalidSignature`].
+    /// Returns `Ok(())` on a match. Behavior summary:
+    ///
+    /// - `receipt.version != RECEIPT_SCHEMA_VERSION` →
+    ///   [`AuditError::UnsupportedVersion`]. Fail-closed forward-compat:
+    ///   a verifier built against version `N` refuses to interpret a
+    ///   receipt that claims any other schema version. See DESIGN.md §14.
+    /// - Any tampering with any non-`signature` field (including
+    ///   `version`), or any change to the signature bytes →
+    ///   [`AuditError::InvalidSignature`].
     pub fn verify(&self, receipt: &Receipt) -> Result<(), AuditError> {
-        let bytes = canonical_json_for_signing(receipt)?;
+        // Version gate runs BEFORE the HMAC check. The signature also
+        // covers `version` (via both the domain-separated prefix tag
+        // and the canonical-JSON body), so a tampered version would be
+        // caught at the HMAC stage too. Checking explicitly first gives
+        // a clearer error and matches the fail-closed policy.
+        if receipt.version != RECEIPT_SCHEMA_VERSION {
+            return Err(AuditError::UnsupportedVersion {
+                got: receipt.version,
+                expected: RECEIPT_SCHEMA_VERSION,
+            });
+        }
+        let bytes = signing_input(receipt)?;
         let expected = hmac_sign(&self.key, &bytes);
         if expected.ct_eq(&receipt.signature).into() {
             Ok(())
@@ -175,6 +210,18 @@ pub enum AuditError {
     /// The recomputed signature did not match the stored one.
     #[error("invalid signature")]
     InvalidSignature,
+    /// The receipt declares a schema version this verifier does not
+    /// understand. Surfaced as a dedicated variant (rather than folded
+    /// into [`AuditError::InvalidSignature`]) so callers — and incident
+    /// responders reading the error — can tell a version-skew miss from
+    /// a tampering attempt at a glance. See DESIGN.md §14.
+    #[error("unsupported receipt schema version: got {got}, expected {expected}")]
+    UnsupportedVersion {
+        /// Schema version declared on the receipt.
+        got: u8,
+        /// Schema version this build of the verifier accepts.
+        expected: u8,
+    },
     /// I/O error reading or writing the log file.
     #[error("io: {0}")]
     Io(#[from] std::io::Error),
@@ -241,17 +288,31 @@ impl AuditLog {
     }
 }
 
-/// Canonical-JSON of a receipt with the `signature` field removed.
+/// HMAC input for a receipt:
+///   `b"v" || [version_byte] || canonical_json(receipt_without_signature)`.
+///
+/// The `b"v" || version` prefix is a domain-separated tag binding the
+/// receipt's schema version into the MAC. `version` is also part of the
+/// canonical-JSON body (because it's a struct field), so the prefix is
+/// redundant for integrity — but it makes the version-binding contract
+/// explicit at the signing-input layer, so a future schema change that
+/// (say) renames the field can never silently lose the version-binding
+/// property: the prefix tag stays.
 ///
 /// The route through `serde_json::Value` is intentional: the default
 /// `serde_json::Map` is a sorted `BTreeMap`, so a `Value`-based round trip
 /// canonicalises key order at every object level. `serde_json::to_vec`
 /// (not `to_vec_pretty`) emits no whitespace. The combination matches the
 /// `Context::args_hash` rules locked in WEEK2_SPEC §2.1.
-fn canonical_json_for_signing(receipt: &Receipt) -> Result<Vec<u8>, serde_json::Error> {
+fn signing_input(receipt: &Receipt) -> Result<Vec<u8>, serde_json::Error> {
     let mut v = serde_json::to_value(receipt)?;
     if let serde_json::Value::Object(ref mut m) = v {
         m.remove("signature");
     }
-    serde_json::to_vec(&v)
+    let body = serde_json::to_vec(&v)?;
+    let mut out = Vec::with_capacity(body.len() + 2);
+    out.push(b'v');
+    out.push(receipt.version);
+    out.extend_from_slice(&body);
+    Ok(out)
 }

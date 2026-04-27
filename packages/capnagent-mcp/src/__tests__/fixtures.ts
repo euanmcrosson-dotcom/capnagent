@@ -13,6 +13,7 @@ export const TEST_SIGNATURE = new Uint8Array(64).fill(0x55);
  */
 export function makeReceipt(overrides: Partial<Receipt> = {}): Receipt {
   return {
+    version: 1,
     capabilityIdentifier: "buy",
     caveats: [{ predicate: 'merchant == "amazon.com"' }],
     contextSummary: {

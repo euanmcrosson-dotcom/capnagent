@@ -23,6 +23,12 @@ export type * from "../../../crates/capnagent-wasm/pkg/capnagent_wasm.js";
  * Locked by `docs/WEEK3_SPEC.md` §3.1.
  */
 export interface RawReceipt {
+  /**
+   * Receipt schema version. Currently always `1`. See Rust-side
+   * `docs/DESIGN.md` §14 — the verifier rejects unknown versions
+   * fail-closed.
+   */
+  version: number;
   capability_identifier: string;
   caveats: Array<{ predicate: string }>;
   context_summary: {

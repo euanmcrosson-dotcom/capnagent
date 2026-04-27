@@ -10,6 +10,7 @@ import type { Receipt } from "../types.js";
 import type { RawReceipt } from "../wasm.js";
 
 const sampleAllowed: RawReceipt = {
+  version: 1,
   capability_identifier: "buy",
   caveats: [{ predicate: 'merchant == "amazon.com"' }, { predicate: "amount <= 50_usd" }],
   context_summary: {
@@ -23,6 +24,7 @@ const sampleAllowed: RawReceipt = {
 };
 
 const sampleDenied: RawReceipt = {
+  version: 1,
   capability_identifier: "buy",
   caveats: [],
   context_summary: { caller: "agent:rogue", tool: "bank.wire", args_hash: "00" },

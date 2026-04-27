@@ -156,6 +156,7 @@ async function loadFresh() {
 }
 
 const SAMPLE_RAW: RawReceipt = {
+  version: 1,
   capability_identifier: "buy",
   caveats: [{ predicate: 'merchant == "amazon.com"' }],
   context_summary: {

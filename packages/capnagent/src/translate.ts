@@ -26,6 +26,11 @@ export function rawReceiptToReceipt(raw: RawReceipt): Receipt {
   );
 
   return {
+    // `version` passes through unchanged — both wire and public types
+    // expose it as a plain number. The Rust verifier rejects unknown
+    // versions fail-closed (DESIGN.md §14), so callers tampering with
+    // this field will see Auditor.verify fail.
+    version: raw.version,
     capabilityIdentifier: raw.capability_identifier,
     caveats: frozenCaveats,
     contextSummary: {
@@ -52,6 +57,7 @@ export function rawReceiptToReceipt(raw: RawReceipt): Receipt {
  */
 export function receiptToRaw(r: Receipt): RawReceipt {
   return {
+    version: r.version,
     capability_identifier: r.capabilityIdentifier,
     // Copy caveats out of the (potentially frozen) wrapper so the WASM
     // side can hand them through whatever transport it uses.

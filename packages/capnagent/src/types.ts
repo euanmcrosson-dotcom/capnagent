@@ -29,6 +29,13 @@ export interface Context {
  * can't mutate the receipt in flight before audit verification.
  */
 export interface Receipt {
+  /**
+   * Receipt schema version. Currently always `1`. The Rust verifier
+   * rejects unknown versions fail-closed (forward-compat gate, see
+   * Rust-side `docs/DESIGN.md` §14). Bumping this is a wire-format
+   * break, not a hot upgrade.
+   */
+  version: number;
   capabilityIdentifier: string;
   caveats: ReadonlyArray<{ predicate: string }>;
   contextSummary: {

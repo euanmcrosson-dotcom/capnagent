@@ -157,6 +157,7 @@ import { type CallLog, type Product, createMockShop } from "../shop.js";
 
 function allowReceipt(toolName: string): Record<string, unknown> {
   return {
+    version: 1,
     capabilityIdentifier: "buy",
     caveats: Object.freeze([Object.freeze({ predicate: 'merchant == "amazon.com"' })]),
     contextSummary: { caller: "agent:llm", tool: toolName, argsHash: "ab".repeat(32) },
@@ -168,6 +169,7 @@ function allowReceipt(toolName: string): Record<string, unknown> {
 
 function denyReceipt(toolName: string, reason: string): Record<string, unknown> {
   return {
+    version: 1,
     capabilityIdentifier: "buy",
     caveats: Object.freeze([Object.freeze({ predicate: 'merchant == "amazon.com"' })]),
     contextSummary: { caller: "agent:llm", tool: toolName, argsHash: "ab".repeat(32) },

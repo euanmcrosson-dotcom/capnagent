@@ -449,3 +449,67 @@ Out of scope:
 - Cross-region replay (clock skew between issuer and verifier).
   TTL is wall-clock; deployments that span regions should err on the
   side of a longer TTL or use a unified clock source.
+
+## 14. Receipt schema versioning (v0.2)
+
+Why versioning matters: in-flight receipts during a deploy. A single
+fleet may rolling-upgrade across hours; a receipt minted by an older
+verifier and consumed (or re-verified) by a newer one — or vice
+versa — must not be silently misinterpreted under the new caveat
+semantics. The `version` byte gives every receipt a self-describing
+schema tag so the verifier knows whether to trust its understanding
+of the rest of the bytes.
+
+Current invariant:
+
+- `Receipt::version: u8 == 1` always (`RECEIPT_SCHEMA_VERSION`).
+- `version` is the FIRST field of the struct in source order. Serde
+  emits the same field set the canonical-JSON encoder later sorts
+  alphabetically (`capability_identifier`, `caveats`, ...,
+  `version`), so on-the-wire byte order is unchanged from v0.1
+  except for the appended `"version":1` member. Existing receipts in
+  tests round-trip with `version: 1` injected on the way out — the
+  change is purely additive at the public API.
+- The auditor's HMAC input is domain-separated:
+  `b"v" || [version_byte] || canonical_json(receipt_minus_signature)`.
+  The leading `b"v" || version` tag binds the schema version into
+  the MAC. `version` is also covered by the canonical-JSON body
+  (it's a struct field), so the prefix tag is redundant for
+  integrity — but it locks the version-binding contract at the
+  signing-input layer, making it impossible for a future schema
+  change that renames or moves the field to silently lose the
+  version-binding property.
+
+Fail-closed semantics:
+
+- `Auditor::verify(receipt)` rejects any receipt with
+  `version != RECEIPT_SCHEMA_VERSION` and surfaces a dedicated
+  `AuditError::UnsupportedVersion { got, expected }` variant.
+  Callers — and incident responders reading the error — can
+  distinguish a version-skew miss from a tampering attempt at a
+  glance.
+- The version check runs BEFORE the HMAC step. A tampered version
+  byte would also fail the HMAC check (because the prefix tag and
+  the body both cover it), but checking explicitly first gives a
+  cleaner error and matches the fail-closed policy: if the
+  verifier doesn't understand the schema, it must not interpret
+  any other field.
+- `version == 0` is also rejected. Serde requires the field by
+  default — a receipt missing `version` fails to deserialize at
+  the JSON layer — so `0` is reserved as a "legacy / pre-v0.2"
+  sentinel rather than a real value any production receipt would
+  ever carry.
+
+Bumping the version is a wire-format break, not a hot upgrade.
+A change from `1` → `2` means:
+
+- All v0.1 verifiers in the fleet refuse v0.2 receipts.
+- All v0.2 verifiers refuse v0.1 receipts.
+- Receipts previously persisted to NDJSON logs at version `1`
+  become unverifiable by a v0.2-only fleet.
+
+The deployment expectation is therefore: roll out a verifier that
+*supports both* versions during the migration window, then drop
+v=1 support in a subsequent release. v0.2 ships the version field
+itself; the dual-support story is a v0.3+ concern that is out of
+scope for this milestone.

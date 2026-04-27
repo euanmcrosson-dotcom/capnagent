@@ -42,7 +42,9 @@ pub use verifier::{pop_challenge_for, Verified, Verifier, VerifyError};
 // The free functions on `caveat_dsl` (`parse`, `evaluate`, `matches`) are
 // deliberately NOT re-exported — callers reach them through
 // `capnagent_core::caveat_dsl::*` to keep the crate root narrow.
-pub use audit::{AuditError, AuditLog, Auditor, ContextSummary, Outcome, Receipt};
+pub use audit::{
+    AuditError, AuditLog, Auditor, ContextSummary, Outcome, Receipt, RECEIPT_SCHEMA_VERSION,
+};
 pub use caveat_dsl::{DslError, Predicate};
 pub use context::{Context, ContextBuilder};
 pub use nonce_store::{InMemoryNonceStore, NonceStore};
