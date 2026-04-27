@@ -75,6 +75,29 @@ impl CapabilityBuilder {
         self
     }
 
+    /// Bind this capability to an ed25519 public key (raw 32 bytes), the
+    /// DPoP-style holder-of-key surface from `DESIGN.md` §11. Must be
+    /// called BEFORE any `.caveat()` — the underlying core asserts on
+    /// out-of-order calls. The returned builder produces tokens that
+    /// fail `verify_with_context` (with a recorded denial) and require
+    /// `verify_with_proof` for use.
+    ///
+    /// Length is validated here and surfaced as a JS-side `Error`
+    /// (rather than a Rust panic / `RuntimeError`) on mismatch — same
+    /// pattern as `Auditor.verify`.
+    #[wasm_bindgen(js_name = "holderOfKey")]
+    pub fn holder_of_key(mut self, pubkey: &[u8]) -> Result<CapabilityBuilder, JsError> {
+        if pubkey.len() != 32 {
+            return Err(JsError::new(&format!(
+                "ed25519 public keys are exactly 32 bytes; got {}",
+                pubkey.len()
+            )));
+        }
+        let inner = self.0.take().expect("CapabilityBuilder already consumed");
+        self.0 = Some(inner.holder_of_key(pubkey));
+        Ok(self)
+    }
+
     /// Finalise the capability.
     pub fn build(mut self) -> Capability {
         let inner = self.0.take().expect("CapabilityBuilder already consumed");
@@ -112,6 +135,15 @@ impl Capability {
     #[wasm_bindgen(getter)]
     pub fn identifier(&self) -> String {
         self.0.identifier.clone()
+    }
+
+    /// Returns the bound ed25519 public key (32 bytes) for hok-bound
+    /// capabilities, or `undefined` for non-hok tokens. The `Option<Vec<u8>>`
+    /// is converted by wasm-bindgen to `Uint8Array | undefined` on the JS
+    /// side. See `DESIGN.md` §11.
+    #[wasm_bindgen(getter, js_name = "holderOfKey")]
+    pub fn holder_of_key(&self) -> Option<Vec<u8>> {
+        self.0.holder_of_key.clone()
     }
 }
 
@@ -155,6 +187,63 @@ impl Verifier {
             .map_err(|e| JsError::new(&e.to_string()))?;
         to_js(&receipt).map_err(|e| JsError::new(&e.to_string()))
     }
+
+    /// Four-gate pipeline (chain → proof → revocation → caveats) for
+    /// hok-bound capabilities. `proof` is the raw 64-byte ed25519
+    /// signature the holder produced over `challenge`. `challenge` is
+    /// arbitrary bytes (use [`pop_challenge_for`] for the documented
+    /// default).
+    ///
+    /// Throws on `VerifyError::Chain` (forged token) and
+    /// `VerifyError::Audit`, same shape as `verifyWithContext`. A
+    /// proof failure surfaces as `Outcome::Denied` on the returned
+    /// receipt with reason `"holder-of-key proof failed"` — it is NOT
+    /// thrown. See `DESIGN.md` §11 for the rationale.
+    ///
+    /// Length validation: `proof.len() == 64` is enforced here and
+    /// surfaced as a JS-side `Error` rather than a Rust panic. The
+    /// challenge length is unconstrained.
+    #[wasm_bindgen(js_name = "verifyWithProof")]
+    pub fn verify_with_proof(
+        &self,
+        cap: &Capability,
+        ctx: JsValue,
+        auditor: &Auditor,
+        challenge: &[u8],
+        proof: &[u8],
+    ) -> Result<JsValue, JsError> {
+        if proof.len() != 64 {
+            return Err(JsError::new(&format!(
+                "ed25519 proofs are exactly 64 bytes; got {}",
+                proof.len()
+            )));
+        }
+        let ctx_native = decode_context(ctx)?;
+        let receipt = self
+            .0
+            .verify_with_proof(&cap.0, &ctx_native, &auditor.0, challenge, proof)
+            .map_err(|e| JsError::new(&e.to_string()))?;
+        to_js(&receipt).map_err(|e| JsError::new(&e.to_string()))
+    }
+}
+
+// ---------------------------------------------------------------------------
+// pop_challenge_for — default proof-of-possession challenge derivation.
+// ---------------------------------------------------------------------------
+
+/// Default challenge derivation for proof-of-possession: the SHA-256 of
+/// canonical-JSON `{ id, tool, args_hash, now_ms }`. Both holder and
+/// verifier must compute this bytewise-identically — that's the whole
+/// point. Returns 32 bytes.
+///
+/// Callers free to pass their own challenge bytes to
+/// [`Verifier::verify_with_proof`] if they want a different policy
+/// (e.g. include a server-side nonce). This function is a default,
+/// not a requirement.
+#[wasm_bindgen(js_name = "popChallengeFor")]
+pub fn pop_challenge_for(cap: &Capability, ctx: JsValue) -> Result<Vec<u8>, JsError> {
+    let ctx_native = decode_context(ctx)?;
+    Ok(core::pop_challenge_for(&cap.0, &ctx_native))
 }
 
 // ---------------------------------------------------------------------------
