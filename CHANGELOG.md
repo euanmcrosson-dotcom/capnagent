@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Purple-team format adopted from detection-engineering convention.**
+  Replaced the prior loose markdown shape with a plain-text,
+  grep-friendly format with iterative run history (one row per
+  retry, capturing Env, Gates, Decision, Latency, FP-7d, Gap-class,
+  Gap, Action). Adds seven specific extensions over the
+  detection-engineering source: `Gap-class:` (CAPABILITY-CONFIG /
+  DEFENSE-LOGIC / OPERATOR-MISCONFIG / OUT-OF-SCOPE / HYPOTHESIS /
+  NONE) so failures are aggregable across the corpus; `Env:` per run
+  so PASSes don't lie across platforms; `FP-7d:` so CLOSED means
+  useful, not just firing; `Coverage:` listing tested + not-yet-
+  tested variants so one atomic doesn't claim a whole technique;
+  `Known-bypasses:` so PASS is honest; `Re-validate-by:` (default 6
+  months) so CLOSED isn't forever; tightened Hypothesis to predict
+  both true-positive and true-negative halves (a defense that denies
+  everything is not the win condition).
+  Round 01 (tool-description injection) migrated to the new format
+  preserving all evidence and prose context. `_template.md` and
+  `README.md` updated to match.
 - **Repositioning: capnagent is now a public purple-team harness for
   MCP and AI-agent tool surfaces** (with a Rust capability-token
   engine underneath), not "a capability-token library." The corpus

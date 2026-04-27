@@ -1,80 +1,121 @@
 # Purple-team corpus
 
-Adversarial test data for capnagent. Each entry in this directory is
-one round of a blue → red → iterate loop, recorded in a structured
-format so the corpus is reviewable by external security researchers
-without trusting prose.
+Adversarial test data for capnagent. Each round is one cycle of a
+blue → red → iterate loop, recorded in a structured plain-text
+format so the corpus is grep-friendly, reviewable by external
+security researchers, and re-validatable by anyone who can clone
+the repo and run `npm test`.
+
+## Format
+
+The format is adapted from a detection-engineering convention with
+seven additions for authorization-engineering specifics. See
+[`_template.md`](./_template.md) for the canonical shape; new
+rounds copy that file as `NN-<short-name>.md`.
+
+The metadata header captures the falsifiable claim, the runnable
+PoC, the tested + not-yet-tested variants, the known bypasses, the
+re-validate cadence, and the round status. The run history is the
+load-bearing part — each retry of the test under different
+conditions is one row, with the gap-class and action that drove
+the next iteration. CLOSED means the structural defense held with
+both positive and negative hypotheses met; CLOSED does NOT mean
+"forever" — every round has a `Re-validate-by:` date.
 
 ## Methodology
 
-We run blue-first. Each round:
+Blue-first. Each round:
 
-1. **Blue writes the security claim** in falsifiable language. Example:
-   *"Given a capability that permits `read_text_file` only inside
-   `/sandbox/`, an attacker controlling a co-installed MCP server
-   cannot cause the agent to read `~/.ssh/id_rsa`."*
+1. **Blue writes the security claim** in falsifiable form, with
+   BOTH halves explicit:
+   - **Positive (true-positive):** given capability C, attack
+     call A SHOULD be denied with reason matching pattern P.
+   - **Negative (true-negative):** given the same capability C,
+     legitimate call L SHOULD be allowed and return result R.
+   A defense that denies everything is not the win condition.
+   Both halves must hold for CLOSED.
 
-2. **Red constructs an attack** designed to falsify that claim. The
-   attack is concrete (a malicious tool description, an injected
-   prompt, etc.) and reproducible (someone else can clone the repo,
-   run a script, watch it succeed or fail).
+2. **Red constructs an attack** designed to falsify the positive
+   half. The attack is concrete (a malicious tool description, an
+   injected prompt, a captured-and-replayed token, etc.) and
+   reproducible (someone else can clone, run, watch).
 
-3. **Run the attack against capnagent.** Two outcomes:
-   - **Claim holds:** capnagent denies the malicious call. The denial
-     receipt is captured as evidence. Red constructs a harder attack;
-     loop.
-   - **Claim breaks:** capnagent allows the call. The attack succeeds.
-     Either revise the claim (the original was overclaiming), add a
-     constraint to the defense (the capability needed to be tighter),
-     or fix capnagent (rare — most failures are policy-side).
+3. **Run the attack against capnagent** under the stated
+   environment. Two outcomes:
+   - **Defense holds:** PASS. Receipt captured, run status logged
+     with `Gap-class: NONE`. If this is the first run and
+     coverage is good, the round CLOSES.
+   - **Defense breaks:** FAIL or PARTIAL. Gap is classified,
+     action recorded, the round stays OPEN, next run inherits the
+     fix.
 
-4. **Record the round** in this directory using `_template.md`.
+4. **Re-validate-by date set.** Defaults to 6 months from CLOSED.
+   Defenses rot — capnagent versions advance, MCP SDK changes,
+   threat-class atomics evolve. CLOSED-forever is a lie; this
+   field is the lie-detector.
 
-## Why blue-first, not red-first
+## Why blue-first
 
 For research-quality output:
 
 - It forces *us* to write the security claim before the attack
   is constructed. Otherwise the claim quietly drifts to match the
-  result ("oh, we always meant *this*"). Falsifiable claims first;
-  attacks second.
+  result. Falsifiable claims first; attacks second.
 - It prevents the "we already know the answer" bias when both
   red and blue are the same person.
 - It gives red a concrete target — not a vague "find anything bad."
 
 Red-first is the right pattern for mature deployed systems
-measuring residual risk. capnagent is still proving the claim.
+measuring residual risk in the wild. capnagent is still proving
+the structural claim; blue-first dominates here.
 
 ## What every entry must include
 
-- A **falsifiable security claim** — if-X-then-Y form.
-- A **runnable PoC** — vitest spec, shell script, or both. The
-  prose can lie; the script can't.
-- The **denial receipt** (or evidence the call reached the tool
-  surface, if the claim breaks) — JSON, committed alongside the PoC.
-- An honest **residual risk** section. Every defense has limits;
+- A **falsifiable security claim** with both true-positive and
+  true-negative halves.
+- A **runnable PoC** — vitest spec at
+  `examples/*/src/__tests__/*.purple.test.ts`. Prose can lie;
+  the script can't.
+- The **denial receipt** committed under `evidence/`. Reviewers
+  can verify the receipt's HMAC signature against the test's root
+  key independently.
+- A **`Coverage:`** field listing tested + not-yet-tested
+  variants, so one atomic doesn't claim the whole technique.
+- An honest **`Known-bypasses:`** list. Every defense has limits;
   pretending otherwise is how security writeups get destroyed in
   comments.
-- A **defender actionable** — what an operator should change in
-  their capability configuration based on this round.
+- An **`Env:`** field per run so PASSes don't lie across
+  platforms.
+- An **`FP-7d:`** measurement (or `pending baseline`). CLOSED
+  without an FP measurement means useful-when-tight, not
+  useful-in-production.
+- A **`Gap-class:`** per run, so the corpus is aggregable —
+  grep across rounds and discover "60% of our gaps are
+  CAPABILITY-CONFIG, we should ship better issuance defaults."
 
 ## How to add a new round
 
-1. Copy `_template.md` to `NN-<short-name>.md` where `NN` is the
-   next sequence number.
-2. Fill it out blue-first: write the security claim, write the
-   attack, then run it.
-3. The runnable PoC lives in the relevant `examples/*` package as
-   a vitest spec named `*.purple.test.ts`. Link it from the entry.
-4. Commit the entry, the PoC, and the receipt evidence as one unit.
+1. Copy `_template.md` to `NN-<short-name>.md` (next number).
+2. Fill the header blue-first: claim, coverage, known-bypasses.
+3. Write the runnable PoC at
+   `examples/<package>/src/__tests__/<short-name>.purple.test.ts`.
+4. Run it. Capture the receipt JSON via the package's
+   `regen-purple-evidence` bin script (or write one if the
+   package doesn't have it yet — see the mcp-fs-agent example).
+5. Fill in Run 1's metadata. If PASS, set Status: CLOSED with
+   today's date and Re-validate-by: today + 6 months. If
+   FAIL/PARTIAL, classify the gap, take the action, run again as
+   Run 2.
+6. Commit the entry, the PoC, and the receipt evidence as one
+   unit.
 
 ## Index
 
-| #  | Name                       | Class               | Status              |
-|----|----------------------------|---------------------|---------------------|
-| 01 | Tool-description injection | OWASP LLM01, CWE-441 | holds-with-caveat   |
+| #  | Name                                             | Class                | Status                | Re-validate-by | Gates fired (last run) |
+|----|--------------------------------------------------|----------------------|-----------------------|----------------|------------------------|
+| 01 | Tool-description injection (cross-server CD)     | OWASP LLM01, CWE-441 | CLOSED 2026-05-04     | 2026-11-04     | chain ✓ caveat ✗       |
 
-(Status: `drafted` = blue side written; `running` = PoC under
-development; `holds` = defense survived; `holds-with-caveat` =
-defense survived under stated assumption only; `breaks` = attack
-succeeded, capnagent allowed the call.)
+(Status enum: `OPEN`, `PARTIAL`, `CLOSED — date`. Gates symbols:
+`✓` gate checked + passed; `✗` gate checked + denied (this is
+the gate that caught the attack); `-` not applicable to the
+attack class.)
