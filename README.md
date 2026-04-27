@@ -1,62 +1,162 @@
 # capnagent
 
-Capability-based authority tokens for AI agent tool calls.
+> Capability-based authority tokens for AI agent tool calls. Prompt
+> injection is a confused-deputy attack — capnagent removes the deputy's
+> ambient authority. Every tool call carries a macaroon-style capability
+> that is attenuable, revocable, and audit-logged. An agent under
+> attack — or simply asked to do something it wasn't authorized for —
+> still cannot exceed its scope.
 
-Prompt injection is a confused-deputy attack. capnagent removes the deputy's
-ambient authority: every tool call carries a macaroon-style capability that
-is attenuable, revocable, and audit-logged. An injected agent can still try
-to misbehave; the verifier will reject anything outside the capability's
-scope.
+![capnagent denies a wire transfer that exceeds the issued capability's scope, while allowing the in-scope cable purchase](docs/demo-direct.gif)
 
-> Status: **v0 — week 1 (macaroon core + property tests)**.
-> See [`docs/DESIGN.md`](docs/DESIGN.md) for the threat model and roadmap.
+The clip above is the `demo:llm-direct` scenario: a real Claude Opus 4.7
+agent driven by the Anthropic SDK is asked to send a $30 wire **and**
+buy a USB-C cable. The issued capability scopes the agent to
+`tool == "checkout.purchase"`. The wire fires; capnagent denies it
+before the underlying tool surface is touched; the cable purchase
+proceeds normally. Every decision is signed into an audit receipt.
 
-## Quick taste
+```
+→ bank.wire {"to":"bob@example.com","amount":30}
+  ✗ DENIED  caveat failed: tool == "checkout.purchase"
+
+bank.wire reached underlying shop: no
+capnagent denied the wire on capability-scope grounds —
+the user's direct request exceeded what the issued capability permits.
+```
+
+## Status: v0 (weeks 1–4 shipped)
+
+| Week | Deliverable | Status |
+|---:|---|:---:|
+| 1 | Macaroon core in Rust: issue, attenuate, verify. 9 proptest cases proving the cannot-broaden invariant. | ✅ |
+| 2 | Caveat DSL parser + evaluator. Verifier-controlled `Context`. Audit-log signer. 99 tests across 4 targets. | ✅ |
+| 3 | WASM bindings + `@capnagent/core` (TS) + `@capnagent/mcp` adapter. 55 vitest cases. | ✅ |
+| 4 | Shopping-agent demo (scripted + LLM-driven via Anthropic SDK). 7 scenarios across deterministic + live API. | ✅ |
+| 5 | Revocation list + DPoP-style holder-of-key. | next |
+| 6 | Public release. | pending |
+
+CI runs **178 tests** on every push (Rust property + integration, WASM
+smoke, TS unit, scripted demo); 3 additional opt-in live-API tests run
+locally with `ANTHROPIC_API_KEY` set.
+
+## What's in the repo
+
+```
+crates/
+  capnagent-core/        Rust crypto core (Issuer, Verifier, Auditor,
+                         Capability, Caveat, Context, caveat DSL).
+  capnagent-wasm/        wasm-bindgen wrapper around capnagent-core.
+
+packages/
+  capnagent/             @capnagent/core — idiomatic TS wrapper around
+                         the WASM artifact. Snake↔camel translation,
+                         frozen receipts, typed error hierarchy.
+  capnagent-mcp/         @capnagent/mcp — drop-in wrapper around any
+                         structurally-typed MCP client (wrapMCPClient,
+                         guardCall, CapabilityDeniedError).
+
+examples/
+  shopping-agent/        End-to-end demo. Three LLM scenarios + one
+                         deterministic vitest spec. The clip above is
+                         from this package.
+
+docs/
+  DESIGN.md              Threat model, security argument, error model,
+                         v0 milestones, v0.1 backlog.
+  WEEK2_SPEC.md          Type contracts that drove the parallel
+                         3-terminal week-2 implementation.
+  WEEK3_SPEC.md          Same, for the WASM/TS surface.
+  demo-direct.gif        The recording above.
+```
+
+## Quick taste — Rust
 
 ```rust
 use capnagent_core::{Issuer, Verifier};
 
-let secret = b"32-bytes-from-a-csprng-please...";
+let secret = b"32-bytes-from-a-csprng-please-thanks";
 
 let cap = Issuer::from_key(secret)
     .issue("buy")
-    .caveat("merchant == \"amazon.com\"")
-    .caveat("amount <= 50_usd")
-    .caveat("expires <= 2026-04-27T12:00:00Z")
+    .caveat(r#"tool == "checkout.purchase""#)
+    .caveat(r#"arg.merchant == "amazon.com""#)
+    .caveat("arg.amount <= 50")
+    .caveat("now <= @2099-01-01T00:00:00Z")
     .build();
 
-let token = cap.serialize(); // base64url, ~200 bytes typical
-
-// On the verifier side
+let token = cap.serialize();             // base64url, ~250 bytes
 let parsed = capnagent_core::Capability::parse(&token).unwrap();
 Verifier::new(secret).verify(&parsed).unwrap();
 ```
 
-## What's in this repo
+## Quick taste — TypeScript / MCP
 
+```ts
+import { Issuer, Verifier, Auditor, init } from "@capnagent/core";
+import { wrapMCPClient } from "@capnagent/mcp";
+
+await init();
+
+const buyCap = Issuer.fromKey(rootKey)
+  .issue("buy")
+  .caveat(`tool == "checkout.purchase"`)
+  .caveat(`arg.merchant == "amazon.com"`)
+  .caveat("arg.amount <= 50")
+  .build();
+
+const guarded = wrapMCPClient(mcpClient, {
+  capability: buyCap,
+  verifier: new Verifier(rootKey),
+  auditor:  new Auditor(auditKey),
+  context: (toolName, args) => ({ caller: "agent:planner", tool: toolName, args }),
+  onReceipt: (r) => auditSink.append(r),
+});
+
+// All callTool() routes through the verifier first. Out-of-scope
+// calls throw CapabilityDeniedError before the underlying tool runs.
+await guarded.callTool("checkout.purchase", { ... });
 ```
-crates/
-  capnagent-core/      Rust crypto core (issue, attenuate, verify)
-docs/
-  DESIGN.md            Threat model, abstractions, security argument
-```
 
-Coming weeks: caveat DSL evaluator (week 2), MCP adapter (week 3), shopping-
-agent demo (week 4), revocation + holder-of-key (week 5), public release
-(week 6).
-
-## Build & test
+## Build & run the demo locally
 
 ```bash
-cargo build
+# Rust core, WASM artifact, TS packages, demo runner — all from npm scripts at root
+npm install
+npm run build:wasm                       # produces crates/capnagent-wasm/pkg/
+npm run -w @capnagent/core build         # produces packages/capnagent/dist/
+
+# Tests (no API key required)
 cargo test
+npm test --workspaces --if-present       # 55 TS + 22 WASM-smoke + 3 scripted demo
+
+# Live LLM demo (requires ANTHROPIC_API_KEY)
+export ANTHROPIC_API_KEY=sk-ant-...
+npm run -w @capnagent-examples/shopping-agent demo:llm-direct
 ```
 
-The property tests in `crates/capnagent-core/tests/property_tests.rs` are
-the security argument expressed as code. If any of them fail or flake, the
-threat model in `docs/DESIGN.md` is broken — fix the implementation, not
-the test.
+The demo's three scenarios are documented in
+[`examples/shopping-agent/README.md`](examples/shopping-agent/README.md).
+
+## Security model
+
+The full threat model is in [`docs/DESIGN.md`](docs/DESIGN.md) §2. The
+three load-bearing legs of the security argument are §5; any
+vulnerability that breaks one of them is in scope per
+[`SECURITY.md`](SECURITY.md):
+
+1. **Cryptographic integrity.** A holder cannot broaden a capability
+   without the root key (HMAC-SHA256 macaroon chain).
+2. **Verifier-controlled context.** Caveats evaluate against facts the
+   *verifier* knows, not facts the agent claims.
+3. **Trivially-auditable caveats.** A human can read every caveat on a
+   token and predict exactly what it permits in under 30 seconds.
+
+The property tests in
+`crates/capnagent-core/tests/property_tests.rs` encode invariant 1 in
+code. Any reported violation must be reproducible there or in an
+equivalent harness.
 
 ## License
 
-Apache-2.0.
+[Apache-2.0](LICENSE).

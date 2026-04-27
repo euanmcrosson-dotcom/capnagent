@@ -1,9 +1,11 @@
 # shopping-agent (demo)
 
-> The visceral demo: an injected prompt tries to make a shopping agent
-> wire $5,000 to an attacker. Even though the agent obeys the prompt,
-> capnagent denies the wire because it's outside the issued capability's
-> scope.
+> A real Claude Opus 4.7 agent, asked to do something the issued
+> capability does not permit. The agent attempts the call. capnagent
+> denies it before the underlying tool surface is touched. No money
+> moves. Every decision is signed into an audit receipt.
+
+![demo](../../docs/demo-direct.gif)
 
 This is the v0 deliverable for week 4 of the
 [capnagent roadmap](../../docs/DESIGN.md). The demo is intentionally
