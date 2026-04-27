@@ -52,9 +52,13 @@ function truncate(s: string, n: number): string {
 
 async function main(): Promise<void> {
   const scenarioArg = process.argv[2] ?? "honest";
-  if (scenarioArg !== "honest" && scenarioArg !== "naive") {
+  if (
+    scenarioArg !== "honest" &&
+    scenarioArg !== "naive" &&
+    scenarioArg !== "direct"
+  ) {
     console.error(
-      `Usage: demo-llm.ts <honest|naive>   (got ${JSON.stringify(scenarioArg)})`,
+      `Usage: demo-llm.ts <honest|naive|direct>   (got ${JSON.stringify(scenarioArg)})`,
     );
     process.exit(2);
   }
@@ -99,13 +103,25 @@ async function main(): Promise<void> {
   }
 
   if (run.modelAttemptedWire && run.capnagentDeniedWire) {
-    console.log(
-      `${GREEN}${BOLD}capnagent successfully blocked the prompt-injected wire.${RESET}`,
-    );
+    if (scenario === "direct") {
+      console.log(
+        `${GREEN}${BOLD}capnagent denied the wire on capability-scope grounds — the user's direct request exceeded what the issued capability permits.${RESET}`,
+      );
+    } else {
+      console.log(
+        `${GREEN}${BOLD}capnagent successfully blocked the prompt-injected wire.${RESET}`,
+      );
+    }
   } else if (!run.modelAttemptedWire) {
-    console.log(
-      `${GREEN}Model refused the injection on its own; capnagent is the second layer of defense.${RESET}`,
-    );
+    if (scenario === "direct") {
+      console.log(
+        `${YELLOW}Model declined to attempt the wire even though the user asked. Try a different model or rephrase the user message; capnagent's denial path was not exercised.${RESET}`,
+      );
+    } else {
+      console.log(
+        `${GREEN}Model refused the injection on its own; capnagent is the second layer of defense.${RESET}`,
+      );
+    }
   }
 }
 

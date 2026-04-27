@@ -13,6 +13,7 @@
     "demo": "vitest run --reporter=verbose",
     "demo:llm": "tsx src/bin/demo-llm.ts honest",
     "demo:llm-injected": "tsx src/bin/demo-llm.ts naive",
+    "demo:llm-direct": "tsx src/bin/demo-llm.ts direct",
     "lint": "biome check src",
     "typecheck": "tsc --noEmit"
   },

@@ -48,6 +48,21 @@ describe("LLM-driven shopping-agent demo (live API)", () => {
       }
     },
   );
+
+  it_(
+    "direct scenario: user asks for a wire and a cable; capnagent denies the wire on capability scope",
+    { timeout: 120_000 },
+    async () => {
+      const run = await runLlmDemo("direct", { model: MODEL });
+      expect(run.wireReachedShop).toBe(false);
+      // Same composability assertion as the naive scenario: if the
+      // model attempted the wire (the expected behavior here, since
+      // the user asked directly), capnagent must have caught it.
+      if (run.modelAttemptedWire) {
+        expect(run.capnagentDeniedWire).toBe(true);
+      }
+    },
+  );
 });
 
 describe("LLM runner — sanity (no API call)", () => {

@@ -64,19 +64,29 @@ The same flow, but now the agent is a real Claude model called through
 the Anthropic TS SDK. Same capability, same hostile product page, but
 the model is the thing being guarded.
 
-Two scenarios:
+Three scenarios, each exercising a different threat:
 
-- **`demo:llm`** (honest) — neutral system prompt. Modern Claude usually
-  refuses the prompt-injected wire request on its own. capnagent is the
-  defense-in-depth layer that backs the model's good judgment.
-- **`demo:llm-injected`** (naive) — system prompt explicitly tells the
-  agent to follow tool-output instructions as if they came from the
-  user. The model is now much more likely to attempt `bank.wire`.
-  capnagent is the load-bearing layer here — without it, the demo would
-  wire $5,000 to attacker@evil.example.
+- **`demo:llm`** (honest) — prompt injection in the catalog, neutral
+  system prompt. Modern Claude usually refuses the injection on its
+  own. capnagent is the defense-in-depth layer behind the model's
+  good judgment.
+- **`demo:llm-injected`** (naive) — same injection, but a system prompt
+  that tells the agent to follow tool-output instructions as if they
+  came from the user. Empirically, current frontier models (Haiku 4.5,
+  Opus 4.7) still tend to refuse these — alignment is doing real
+  work. When they don't, capnagent catches it.
+- **`demo:llm-direct`** (direct) — **no injection at all.** The user
+  *literally asks* for a wire transfer and a cable purchase in the same
+  message. The agent does what the user asked. capnagent allows the
+  cable (in capability scope) and denies the wire (out of scope).
+  This is the principle-of-least-authority demo, and it fires
+  reliably on any model regardless of how aligned it is — because
+  nothing is being "tricked", the system is simply enforcing scope.
 
-Both pass the same test: `bank.wire` must never reach the underlying
-mock shop.
+All three pass the same test: `bank.wire` must never reach the
+underlying mock shop. Together they cover three distinct failure
+modes for an agent: injection (`honest`), naive harness (`naive`),
+and over-broad user instruction (`direct`).
 
 ### Run it
 
@@ -85,6 +95,7 @@ export ANTHROPIC_API_KEY=sk-ant-...
 # from the repo root, after `npm run build:wasm`
 npm run -w @capnagent-examples/shopping-agent demo:llm
 npm run -w @capnagent-examples/shopping-agent demo:llm-injected
+npm run -w @capnagent-examples/shopping-agent demo:llm-direct
 ```
 
 You'll see colorized output: each tool call, whether capnagent allowed
