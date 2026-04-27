@@ -357,3 +357,95 @@ Out of scope for v0.1:
   to a compromised key in one entry.
 - Hardware-backed signing (TPM, secure enclave). Out of scope for the
   core; integrators are free to plug in any `Signer` implementation.
+
+## 12. DSL boolean composition (v0.1, shipped)
+
+v0 caveats were single-comparison only. Real deployments routinely
+need a single capability that authorises both reads and writes (e.g.
+`tool == "catalog.search" OR (tool == "checkout.purchase" AND
+arg.amount <= 50)`). v0 forced this to be expressed as TWO capabilities
+issued by the host, which made the agent harness do additional
+bookkeeping the operator shouldn't have to do.
+
+Shipped grammar (additive — every v0 caveat still parses unchanged):
+
+```
+predicate  ::= or_expr
+or_expr    ::= and_expr ("OR" and_expr)*
+and_expr   ::= unary ("AND" unary)*
+unary      ::= comparison | "(" or_expr ")"
+comparison ::= ident op value
+```
+
+Design choices:
+
+- **UPPERCASE keywords only.** `OR` and `AND` are reserved; `or` and
+  `and` remain valid identifiers (so dotted paths like `arg.or` and
+  `env.and` keep working). Visually unambiguous in audit reads.
+- **`AND` binds tighter than `OR`.** Standard precedence. `a OR b AND c`
+  parses as `a OR (b AND c)`; pinned by tests.
+- **Short-circuit on the boolean value, propagate errors from any
+  branch that evaluates.** Matches `||` / `&&` semantics. `(false AND
+  unknown_root == 1)` returns `false` without surfacing the unknown
+  ident; `(unknown_root == 1 AND _)` errors. This lets caveat authors
+  use guard patterns like `(arg.has_field == "true") AND
+  (arg.field == "value")`.
+- **Parens for explicit grouping.** Required to override precedence.
+
+Internals: the public `Predicate` struct is opaque — its private field
+moved from a single `Comparison` to an `Expr { Compare | And | Or }`
+tree, but callers see no change.
+
+## 13. Replay protection (v0.1, shipped)
+
+Threat: capability theft mid-flight when the attacker captures both
+the bearer token AND a proof of possession. The
+[`pop_challenge_for`] derivation (DESIGN.md §11) already includes
+`ctx.now_ms`, so two legitimate calls at different timestamps produce
+different proofs — but an attacker who races within the same
+millisecond wins.
+
+Shipped surface:
+
+- `NonceStore` trait — `try_record(nonce, now_ms, ttl_ms) -> bool`.
+  Records a fresh nonce, refuses a non-expired duplicate.
+  `Send + Sync`; concurrent verifiers are safe.
+- `InMemoryNonceStore` — default impl, `Mutex<HashMap<Vec<u8>, u64>>`
+  keyed on the nonce bytes with a wall-clock expiry value. No
+  background sweeper; entries are reclaimed lazily on overwrite.
+- `Verifier::with_nonce_store(Arc<dyn NonceStore>)` and
+  `Verifier::with_nonce_ttl_ms(u64)` — opt-in. Default TTL is 5
+  minutes (`DEFAULT_NONCE_TTL_MS`).
+- `verify_with_proof` now has 5 gates:
+  chain → proof → **replay** → revocation → caveats. Replays surface
+  as `Outcome::Denied { reason: "proof replay detected" }` — a normal
+  audit-loggable outcome, not an error variant. Crucially, bad
+  proofs do NOT consume a nonce slot: a holder whose first attempt
+  fails for any reason can retry without being locked out.
+
+Design choices:
+
+- **Hash the proof bytes before storing** (`sha256(proof)` — 32
+  bytes). Smaller storage, no proof-byte leakage if the store is
+  ever dumped.
+- **Replay protection only on the hok path.** Non-hok bearer tokens
+  are explicitly designed to be reusable; replay protection there
+  would break the model. The non-hok path bypasses the store
+  entirely (tested explicitly).
+- **Replay does NOT refresh the existing entry's expiry.** A
+  successful replay attempt would otherwise extend the attacker's
+  window through honest behavior. The original expiry stands.
+- **In-memory only by default.** Restarts forget recorded proofs.
+  Production deployments that need cross-process / cross-restart
+  replay resistance should plug in a Redis / Postgres / etc.
+  implementation of `NonceStore`. The trait is small (one method)
+  on purpose so wrapping any external store is a few lines.
+
+Out of scope:
+
+- Active TTL sweeping. Old entries linger in memory until
+  overwritten. For very-high-churn workloads, run a sweeper as a
+  separate task or use a backing store with native expiry.
+- Cross-region replay (clock skew between issuer and verifier).
+  TTL is wall-clock; deployments that span regions should err on the
+  side of a longer TTL or use a unified clock source.

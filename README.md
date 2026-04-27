@@ -37,9 +37,11 @@ the user's direct request exceeded what the issued capability permits.
 | v0 wk 6 | Public release: README, threat model, demo video, blog post. | ✅ |
 | v0.1 | DPoP holder-of-key — Rust core (ed25519, `verify_with_proof`, 4-gate pipeline) + WASM bindings + `@capnagent/core` TS surface + `@capnagent/mcp` `signer` field + demo `hok` scenario. 17 Rust tests + cross-package TS tests. | ✅ |
 | v0.1 | Decimal numbers in the caveat DSL — BNF widened to `\d+(\.\d+)?`, exact-binary equality. 22 new tests. | ✅ |
-| v0.1 | DSL disjunctions, replay protection, receipt schema versioning. | next |
+| v0.1 | DSL boolean composition — `OR` / `AND` / parens with standard precedence and short-circuit eval. 24 new tests. | ✅ |
+| v0.1 | Replay protection — `NonceStore` trait + `InMemoryNonceStore` impl, opt-in via `Verifier::with_nonce_store`. Integrated into `verify_with_proof` as a 5th gate. 14 tests. | ✅ |
+| v0.1 | Receipt schema versioning. | next |
 
-CI runs **255 tests** on every push (7 Rust integration targets, WASM
+CI runs **293 tests** on every push (8 Rust integration targets, WASM
 smoke, TS unit, scripted demo, hok deterministic); 3 additional opt-in
 live-API tests run locally with `ANTHROPIC_API_KEY` set.
 

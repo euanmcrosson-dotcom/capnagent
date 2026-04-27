@@ -9,6 +9,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **v0.1 — Replay protection (`NonceStore`).** New `nonce_store`
+  module exposes the `NonceStore` trait + `InMemoryNonceStore` (TTL
+  HashMap) impl. `Verifier::with_nonce_store(store)` is opt-in;
+  defaults to no replay check (preserving the v0.1-DPoP baseline).
+  When installed, `verify_with_proof` adds a 3rd gate (after chain
+  + proof, before revocation): `sha256(proof_bytes)` is recorded;
+  re-use within `nonce_ttl_ms` (default 5 minutes) becomes
+  `Outcome::Denied { reason: "proof replay detected" }`. Crucially,
+  bad proofs are NOT recorded — they don't lock out a legitimate
+  retry. `verify_with_context` (non-hok bearer tokens) does not
+  consult the store; bearer tokens are explicitly designed to be
+  reusable. 14 new tests including a thread-safety stress and a
+  TTL-boundary check.
+- **v0.1 — Caveat DSL: boolean composition (`OR` / `AND` / parens).**
+  BNF extended:
+  `predicate ::= or_expr; or_expr ::= and_expr ("OR" and_expr)*; ...`
+  with `AND` binding tighter than `OR` and parens for explicit
+  grouping. Keywords are uppercase only — `or` and `and` remain
+  valid identifiers (so dotted paths like `arg.or` keep working).
+  Both operators short-circuit on the boolean value but propagate
+  errors from any branch that does evaluate. Backward-compat at
+  byte level: every v0 single-comparison caveat parses unchanged.
+  Internally, `Predicate` now wraps an `Expr { Compare | And |
+  Or }` tree; the public API is unchanged. The shopping-agent
+  demo's two-capability split (browse + buy) can now be expressed
+  as one capability with a disjunction; documented as the
+  motivating use case in the test file. 24 new tests.
 - **v0.1 — TS / WASM holder-of-key wire-up + decimal DSL.** Three
   parallel branches landed simultaneously, closing out the JS-facing
   side of the DPoP feature and addressing the only DSL gap surfaced

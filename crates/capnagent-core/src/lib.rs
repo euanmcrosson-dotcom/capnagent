@@ -24,6 +24,7 @@
 pub mod audit;
 pub mod caveat_dsl;
 pub mod context;
+pub mod nonce_store;
 pub mod revocation;
 
 mod capability;
@@ -44,4 +45,5 @@ pub use verifier::{pop_challenge_for, Verified, Verifier, VerifyError};
 pub use audit::{AuditError, AuditLog, Auditor, ContextSummary, Outcome, Receipt};
 pub use caveat_dsl::{DslError, Predicate};
 pub use context::{Context, ContextBuilder};
+pub use nonce_store::{InMemoryNonceStore, NonceStore};
 pub use revocation::{RevocationError, RevocationList, Revoker};

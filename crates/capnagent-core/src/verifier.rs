@@ -13,17 +13,28 @@
 //!   that "should not happen during normal operation" (chain forgery, audit
 //!   I/O failure) flow through [`VerifyError`].
 
+use std::sync::Arc;
+use std::time::UNIX_EPOCH;
+
 use ed25519_dalek::{Signature, Verifier as Ed25519Verifier, VerifyingKey};
 use hmac::{Hmac, Mac};
-use sha2::Sha256;
+use sha2::{Digest, Sha256};
 use subtle::ConstantTimeEq;
 
 use crate::audit::{AuditError, Auditor, Outcome, Receipt};
 use crate::capability::{chain_caveat, chain_holder_of_key, Capability, Caveat};
 use crate::caveat_dsl;
 use crate::context::Context;
+use crate::nonce_store::NonceStore;
 use crate::revocation::{RevocationError, RevocationList};
 use crate::{Error, Result};
+
+/// Default replay-window TTL when a [`NonceStore`] is installed but the
+/// caller does not specify one. 5 minutes — long enough to catch races,
+/// short enough that an honest holder regenerating proofs every call
+/// (with `now_ms` baked into the challenge) won't observe spurious
+/// denials.
+pub const DEFAULT_NONCE_TTL_MS: u64 = 5 * 60 * 1_000;
 
 /// Verifies capability tokens against the root key.
 pub struct Verifier {
@@ -34,6 +45,15 @@ pub struct Verifier {
     /// own signature is checked when it is attached, not on every
     /// verify call.
     revocation_list: Option<RevocationList>,
+    /// Optional [`NonceStore`] consulted by `verify_with_proof` to
+    /// detect replays. Hashes (`sha256`) of the proof bytes are
+    /// recorded; subsequent attempts to use the same proof bytes
+    /// within `nonce_ttl_ms` are denied with reason
+    /// `"proof replay detected"`. Has no effect on non-hok paths.
+    nonce_store: Option<Arc<dyn NonceStore>>,
+    /// Per-nonce TTL in milliseconds. Defaults to
+    /// [`DEFAULT_NONCE_TTL_MS`].
+    nonce_ttl_ms: u64,
 }
 
 /// The result of a successful verification — borrows the verified capability.
@@ -51,7 +71,52 @@ impl Verifier {
         Self {
             root_key: key.to_vec(),
             revocation_list: None,
+            nonce_store: None,
+            nonce_ttl_ms: DEFAULT_NONCE_TTL_MS,
         }
+    }
+
+    /// Install a [`NonceStore`] for replay protection on
+    /// `verify_with_proof`. Each accepted proof is recorded as
+    /// `sha256(proof_bytes)` with TTL `self.nonce_ttl_ms` (default
+    /// [`DEFAULT_NONCE_TTL_MS`]). Subsequent attempts to use the same
+    /// proof within the TTL are denied with reason
+    /// `"proof replay detected"`.
+    ///
+    /// Has no effect on `verify_with_context` (non-hok bearer tokens
+    /// are explicitly designed to be reusable; replay protection there
+    /// would break the model).
+    ///
+    /// To pass an `Arc<InMemoryNonceStore>` (so you can also inspect
+    /// it via the concrete methods after install), keep one concrete
+    /// handle for inspection and pass a parallel `Arc<dyn NonceStore>`
+    /// here:
+    ///
+    /// ```ignore
+    /// let store = Arc::new(InMemoryNonceStore::new());
+    /// let dyn_store: Arc<dyn NonceStore> = Arc::clone(&store) as _;
+    /// let verifier = Verifier::new(key).with_nonce_store(dyn_store);
+    /// // inspect via store.len() / store.clear()
+    /// ```
+    #[must_use]
+    pub fn with_nonce_store(mut self, store: Arc<dyn NonceStore>) -> Self {
+        self.nonce_store = Some(store);
+        self
+    }
+
+    /// Override the per-nonce TTL. Default is
+    /// [`DEFAULT_NONCE_TTL_MS`] (5 minutes).
+    #[must_use]
+    pub fn with_nonce_ttl_ms(mut self, ttl_ms: u64) -> Self {
+        self.nonce_ttl_ms = ttl_ms;
+        self
+    }
+
+    /// Drop any installed [`NonceStore`].
+    #[must_use]
+    pub fn without_nonce_store(mut self) -> Self {
+        self.nonce_store = None;
+        self
     }
 
     /// Attach a [`RevocationList`] to this verifier. The list's
@@ -224,10 +289,32 @@ impl Verifier {
             return Ok(auditor.sign(cap, ctx, Outcome::Denied { reason }));
         }
 
-        // Leg 3 — revocation.
+        // Leg 3 — replay protection. Only fires if a NonceStore is
+        // installed; otherwise this is the v0.1-DPoP behavior. The
+        // recorded nonce is sha256(proof) — 32 bytes, no proof-byte
+        // leakage if the store is dumped.
+        if let Some(store) = self.nonce_store.as_ref() {
+            let now_ms = ctx
+                .now
+                .duration_since(UNIX_EPOCH)
+                .map(|d| d.as_millis() as u64)
+                .unwrap_or(0);
+            let nonce = sha256_proof(proof);
+            if !store.try_record(&nonce, now_ms, self.nonce_ttl_ms) {
+                return Ok(auditor.sign(
+                    cap,
+                    ctx,
+                    Outcome::Denied {
+                        reason: "proof replay detected".into(),
+                    },
+                ));
+            }
+        }
+
+        // Leg 4 — revocation.
         let outcome = match check_revocation(cap, self.revocation_list.as_ref()) {
             Err(reason) => Outcome::Denied { reason },
-            // Leg 4 — caveats.
+            // Leg 5 — caveats.
             Ok(()) => match evaluate_all(&cap.caveats, ctx) {
                 Ok(()) => Outcome::Allowed,
                 Err(reason) => Outcome::Denied { reason },
@@ -236,6 +323,12 @@ impl Verifier {
 
         Ok(auditor.sign(cap, ctx, outcome))
     }
+}
+
+fn sha256_proof(proof: &[u8]) -> Vec<u8> {
+    let mut h = Sha256::new();
+    h.update(proof);
+    h.finalize().to_vec()
 }
 
 /// Default proof-of-possession challenge for a given context. Returns
