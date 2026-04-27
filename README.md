@@ -32,6 +32,7 @@ receipt evidence per round.
 | #  | Scenario                                        | Class                | Status            | PoC                                                                                                                  |
 |----|-------------------------------------------------|----------------------|-------------------|----------------------------------------------------------------------------------------------------------------------|
 | 01 | Tool-description injection (cross-server CD)    | OWASP LLM01, CWE-441 | holds-with-caveat | [`tool-poisoning.purple.test.ts`](examples/mcp-fs-agent/src/__tests__/tool-poisoning.purple.test.ts) — 8/8 pass       |
+| 02 | Replay attack on hok-bound capability           | OWASP A07, CWE-294   | holds-with-caveat | [`replay-attack.purple.test.ts`](packages/capnagent/src/__tests__/replay-attack.purple.test.ts) — 8/8 pass            |
 
 Each round produces:
 

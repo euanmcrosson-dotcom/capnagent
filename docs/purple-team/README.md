@@ -111,9 +111,10 @@ the structural claim; blue-first dominates here.
 
 ## Index
 
-| #  | Name                                             | Class                | Status                | Re-validate-by | Gates fired (last run) |
-|----|--------------------------------------------------|----------------------|-----------------------|----------------|------------------------|
-| 01 | Tool-description injection (cross-server CD)     | OWASP LLM01, CWE-441 | CLOSED 2026-05-04     | 2026-11-04     | chain ✓ caveat ✗       |
+| #  | Name                                             | Class                  | Status                | Re-validate-by | Gates fired (last run) |
+|----|--------------------------------------------------|------------------------|-----------------------|----------------|------------------------|
+| 01 | Tool-description injection (cross-server CD)     | OWASP LLM01, CWE-441   | CLOSED 2026-05-04     | 2026-11-04     | chain ✓ caveat ✗       |
+| 02 | Replay attack on hok-bound capability            | OWASP A07, CWE-294     | CLOSED 2026-05-04     | 2026-11-04     | chain ✓ proof ✓ replay ✗ |
 
 (Status enum: `OPEN`, `PARTIAL`, `CLOSED — date`. Gates symbols:
 `✓` gate checked + passed; `✗` gate checked + denied (this is

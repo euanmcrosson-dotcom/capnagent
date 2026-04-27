@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Purple-team round 02: Replay attack on hok-bound capability.**
+  Fires the `replay ✗` gate column the corpus had empty after round
+  01. Threat model: attacker captures (cap, ctx, challenge, proof)
+  bytes mid-flight and replays them. Defense: NonceStore records
+  sha256(proof) of every accepted proof; replays within `nonce_ttl_ms`
+  are denied with reason "proof replay detected" (string is locked
+  for audit-log greppability). PoC at
+  packages/capnagent/src/__tests__/replay-attack.purple.test.ts —
+  8 deterministic tests covering positive (allow on first), negative
+  (allow on fresh), gate ordering (replay short-circuits before
+  caveat), audit-loggability (10 replays produce 10 receipts; under
+  identical inputs receipts are byte-identical, operational finding),
+  TTL=0 boundary, clear() bypass, and opt-in property (without store
+  installed, replays are accepted by design). Round status: CLOSED
+  2026-05-04, holds-with-caveat (capability-shape complete; FP-7d
+  measurement and durable-backend stress remain operator
+  responsibility). Re-validate-by 2026-11-04.
+
+  Captured replay-denial receipt committed at
+  docs/purple-team/evidence/02-replay-attack-on-hok-bound-cap.receipt.json.
+  Receipt is deterministic — same bytes regardless of who runs the
+  regen script — because all inputs (root key, audit key, holder
+  key, frozen now_ms, fixed args) are pinned. Regen via
+  `npm run -w @capnagent-examples/shopping-agent regen-purple-evidence-02`.
+
 ### Changed
 
 - **Purple-team format adopted from detection-engineering convention.**

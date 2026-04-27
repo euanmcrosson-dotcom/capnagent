@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "capabilityIdentifier": "buy-replay-test",
+  "caveats": [
+    {
+      "predicate": "caller == \"agent:planner\""
+    },
+    {
+      "predicate": "tool == \"checkout.purchase\""
+    },
+    {
+      "predicate": "arg.merchant == \"amazon.com\""
+    },
+    {
+      "predicate": "arg.amount <= 50"
+    },
+    {
+      "predicate": "now <= @2099-01-01T00:00:00Z"
+    }
+  ],
+  "contextSummary": {
+    "caller": "agent:planner",
+    "tool": "checkout.purchase",
+    "argsHash": "e52fbb7e3d37b667d250b2691ae61a2f5040a72a32b25289ba41f02f5fccc8e6"
+  },
+  "outcome": {
+    "kind": "denied",
+    "reason": "proof replay detected"
+  },
+  "timestampMs": 1700000000000,
+  "signature": "4bc3495c7fc8d1a7862653317e7798fc25dc4194a2d1b98c9c841d62da6a57a7"
+}
