@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **demo: hok scenario now exercises v0.1 boolean composition.** New
+  `issueHokCapability(publicKey)` issues ONE hok-bound capability with
+  a disjunction + decimal caveat:
+  ```
+  tool == "catalog.search"
+    OR (tool == "checkout.purchase" AND arg.merchant == "amazon.com" AND arg.amount <= 50.00)
+  ```
+  Both `catalog.search` and `checkout.purchase` route through a
+  single guard. `bank.wire` falls outside both branches of the OR
+  and is denied. The previous two-capability form
+  (`issueHokBrowseCapability` + `issueHokBuyCapability`) is retained
+  for backward compat with existing tests but no longer the
+  recommended path. CLI's hok summary message updated to flag the
+  v0.1 surface.
 - **v0.1 — Replay protection (`NonceStore`).** New `nonce_store`
   module exposes the `NonceStore` trait + `InMemoryNonceStore` (TTL
   HashMap) impl. `Verifier::with_nonce_store(store)` is opt-in;

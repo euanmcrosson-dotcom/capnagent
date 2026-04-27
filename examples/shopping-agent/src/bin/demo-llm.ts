@@ -111,7 +111,7 @@ Export it and re-run, e.g.:
       );
       if (scenario === "hok") {
         console.log(
-          `${GREEN}Allowed calls additionally required a valid ed25519 proof-of-possession signature on every invocation.${RESET}`,
+          `${GREEN}Plus: every allowed call carried a fresh ed25519 proof-of-possession signature, and the issued capability used v0.1 boolean composition + a decimal caveat (one cap, OR, AND, parens, arg.amount <= 50.00).${RESET}`,
         );
       }
     } else {

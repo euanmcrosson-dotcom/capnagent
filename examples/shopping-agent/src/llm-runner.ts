@@ -242,6 +242,10 @@ export async function generateHokKeyPair(): Promise<HokKeyPair> {
 /**
  * Issue an hok-bound browse capability. `holderOfKey` is called BEFORE
  * any `caveat` — required by the Rust core, asserted on the WASM side.
+ *
+ * Retained as a separate function for tests / older fixtures that still
+ * issue two capabilities. New code should prefer the v0.1
+ * single-capability form via {@link issueHokCapability}.
  */
 export function issueHokBrowseCapability(publicKey: Uint8Array): Capability {
   return Issuer.fromKey(ROOT_KEY)
@@ -256,6 +260,9 @@ export function issueHokBrowseCapability(publicKey: Uint8Array): Capability {
 /**
  * Issue an hok-bound buy capability. Same caveat scope as the v0
  * `issueBuyCapability`, plus the holder-of-key binding.
+ *
+ * Retained as a separate function for tests / older fixtures. New
+ * code should prefer the single-capability form.
  */
 export function issueHokBuyCapability(publicKey: Uint8Array): Capability {
   return Issuer.fromKey(ROOT_KEY)
@@ -266,6 +273,34 @@ export function issueHokBuyCapability(publicKey: Uint8Array): Capability {
     .caveat(`arg.merchant == "amazon.com"`)
     .caveat("arg.amount <= 50")
     .caveat("now <= @2099-01-01T00:00:00Z")
+    .build();
+}
+
+/**
+ * v0.1 single-capability form. Combines the read-only browse path and
+ * the privileged buy path into ONE capability via a disjunction, and
+ * uses a decimal caveat (`arg.amount <= 50.00`) instead of the v0
+ * integer (`arg.amount <= 50`). Both v0.1 features are exercised on a
+ * single live tool call:
+ *
+ *   `tool == "catalog.search"
+ *      OR (tool == "checkout.purchase"
+ *          AND arg.merchant == "amazon.com"
+ *          AND arg.amount <= 50.00)`
+ *
+ * Plus `caller == "agent:llm"` and `now <= @2099-01-01T00:00:00Z` as
+ * universal preconditions. Any other tool — `bank.wire` included —
+ * falls outside both branches of the OR and is denied.
+ */
+export function issueHokCapability(publicKey: Uint8Array): Capability {
+  return Issuer.fromKey(ROOT_KEY)
+    .issue("hok-buy")
+    .holderOfKey(publicKey)
+    .caveat(`caller == "agent:llm"`)
+    .caveat("now <= @2099-01-01T00:00:00Z")
+    .caveat(
+      `tool == "catalog.search" OR (tool == "checkout.purchase" AND arg.merchant == "amazon.com" AND arg.amount <= 50.00)`,
+    )
     .build();
 }
 
@@ -337,8 +372,14 @@ export async function runLlmDemo(
   let signer: WrapOptions["signer"] | undefined;
   if (scenario === "hok") {
     const { privateKey, publicKey } = await generateHokKeyPair();
-    browseCap = issueHokBrowseCapability(publicKey);
-    buyCap = issueHokBuyCapability(publicKey);
+    // v0.1 single-capability form: one hok-bound capability with a
+    // disjunction caveat covers both `catalog.search` and the
+    // in-budget `checkout.purchase`. Demonstrates OR / AND / parens
+    // and a decimal `arg.amount <= 50.00` in a real live tool call.
+    // bank.wire is outside both branches of the OR → denied.
+    const hokCap = issueHokCapability(publicKey);
+    browseCap = hokCap;
+    buyCap = hokCap;
     signer = opts.signerOverride ?? makeHokSigner(privateKey);
   } else {
     browseCap = issueBrowseCapability();
