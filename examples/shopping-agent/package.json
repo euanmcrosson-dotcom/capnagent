@@ -14,13 +14,15 @@
     "demo:llm": "tsx src/bin/demo-llm.ts honest",
     "demo:llm-injected": "tsx src/bin/demo-llm.ts naive",
     "demo:llm-direct": "tsx src/bin/demo-llm.ts direct",
+    "demo:llm-hok": "tsx src/bin/demo-llm.ts hok",
     "lint": "biome check src",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.91.1",
     "@capnagent/core": "*",
-    "@capnagent/mcp": "*"
+    "@capnagent/mcp": "*",
+    "@noble/ed25519": "^2.2.3"
   },
   "devDependencies": {
     "@biomejs/biome": "1.9.4",
