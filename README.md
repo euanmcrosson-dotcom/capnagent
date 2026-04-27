@@ -32,15 +32,16 @@ the user's direct request exceeded what the issued capability permits.
 | v0 wk 1 | Macaroon core in Rust: issue, attenuate, verify. 9 proptest cases proving the cannot-broaden invariant. | ✅ |
 | v0 wk 2 | Caveat DSL parser + evaluator. Verifier-controlled `Context`. Audit-log signer. 99 tests across 4 targets. | ✅ |
 | v0 wk 3 | WASM bindings + `@capnagent/core` (TS) + `@capnagent/mcp` adapter. 55 vitest cases. | ✅ |
-| v0 wk 4 | Shopping-agent demo (scripted + LLM-driven via Anthropic SDK). 7 scenarios across deterministic + live API. | ✅ |
+| v0 wk 4 | Shopping-agent demo (scripted + LLM-driven via Anthropic SDK). Scenarios: `honest`, `naive`, `direct`, `hok`. | ✅ |
 | v0 wk 5 | Signed revocation list + integrated 3-gate verify pipeline. 18 tests. | ✅ |
 | v0 wk 6 | Public release: README, threat model, demo video, blog post. | ✅ |
-| v0.1 | DPoP-style holder-of-key (ed25519 binding, `verify_with_proof` entry point, 4-gate pipeline). 17 tests. | ✅ |
-| v0.1 | Decimal numbers in caveat DSL, disjunctions, replay protection, receipt schema versioning. | next |
+| v0.1 | DPoP holder-of-key — Rust core (ed25519, `verify_with_proof`, 4-gate pipeline) + WASM bindings + `@capnagent/core` TS surface + `@capnagent/mcp` `signer` field + demo `hok` scenario. 17 Rust tests + cross-package TS tests. | ✅ |
+| v0.1 | Decimal numbers in the caveat DSL — BNF widened to `\d+(\.\d+)?`, exact-binary equality. 22 new tests. | ✅ |
+| v0.1 | DSL disjunctions, replay protection, receipt schema versioning. | next |
 
-CI runs **214 tests** on every push (7 Rust integration targets, WASM
-smoke, TS unit, scripted demo); 3 additional opt-in live-API tests run
-locally with `ANTHROPIC_API_KEY` set.
+CI runs **255 tests** on every push (7 Rust integration targets, WASM
+smoke, TS unit, scripted demo, hok deterministic); 3 additional opt-in
+live-API tests run locally with `ANTHROPIC_API_KEY` set.
 
 ## What's in the repo
 

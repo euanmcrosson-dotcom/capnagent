@@ -9,6 +9,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **v0.1 — TS / WASM holder-of-key wire-up + decimal DSL.** Three
+  parallel branches landed simultaneously, closing out the JS-facing
+  side of the DPoP feature and addressing the only DSL gap surfaced
+  during the live LLM demo:
+  - `crates/capnagent-wasm`: four new wasm-bindgen exports
+    (`CapabilityBuilder.holderOfKey`, `Capability.holderOfKey` getter,
+    `Verifier.verifyWithProof`, top-level `popChallengeFor` function).
+    Smoke test asserts all four in the generated `.d.ts`.
+  - `@capnagent/core`: `holderOfKey()` builder, `holderOfKey` getter,
+    `verifyWithProof()` method, `popChallengeFor()` function — all
+    with snake↔camel translation through the existing wrapper.
+  - `@capnagent/mcp`: optional `signer` field in `WrapOptions`. When
+    `capability.holderOfKey` is set, the wrapper computes
+    `popChallengeFor(cap, ctx)`, awaits `signer(challenge)`, and
+    routes through `verifyWithProof` instead of `verifyWithContext`.
+    If a hok-bound capability is passed without a signer, `wrap` /
+    `guardCall` throw `MISSING_SIGNER_MESSAGE` synchronously before
+    any tool call — same fail-closed semantics as the Rust core.
+  - `examples/shopping-agent`: new `hok` scenario in `llm-runner.ts`,
+    `demo:llm-hok` npm script, deterministic vitest covering happy
+    path + corrupted-signer denial + missing-signer config gate.
+    `@noble/ed25519` added as a dep for the keypair generation.
+  - **Decimal DSL.** BNF widened to `\d+(\.\d+)?`. Internal `Value`
+    moved from `i64` to `f64`. Exact-binary IEEE-754 equality is the
+    locked policy (documented in source); `0.1 + 0.2 == 0.3` is
+    `false`, callers should use `<=` / `>=` for fuzzy-equal cases.
+    NaN is filtered at the boundary (parser cannot emit it; JSON args
+    with non-finite numbers fail closed). 22 new tests in
+    `caveat_dsl_tests.rs`.
 - **v0.1 — DPoP-style holder-of-key.** New optional `holder_of_key`
   field on `Capability` (ed25519 public key bytes) is folded into the
   HMAC chain via a domain-separated step (`HMAC(prev_sig, "__hok:" ||
