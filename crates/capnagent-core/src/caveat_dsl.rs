@@ -21,7 +21,11 @@
 //! # Grammar (informally)
 //!
 //! ```text
-//! predicate  ::= ident op value
+//! predicate  ::= or_expr
+//! or_expr    ::= and_expr ("OR" and_expr)*
+//! and_expr   ::= unary ("AND" unary)*
+//! unary      ::= comparison | "(" or_expr ")"
+//! comparison ::= ident op value
 //! ident      ::= bare_ident ("." bare_ident)*
 //! op         ::= "==" | "!=" | "<=" | ">=" | "<" | ">" | "matches"
 //! value      ::= string | number | timestamp
@@ -39,6 +43,13 @@
 //! a real production case (the live shopping-agent demo surfaced it),
 //! but those three malformed shapes are unambiguous typos that should
 //! fail closed rather than be silently coerced.
+//!
+//! v0.1 also added boolean composition. `OR` and `AND` are reserved words
+//! (uppercase only — keeps them visually unambiguous against idents and
+//! values; lowercase `or` / `and` parse as identifiers, which is the
+//! safer default for a security boundary). `AND` binds tighter than `OR`.
+//! Parentheses force grouping. Both operators short-circuit on the
+//! boolean value but propagate errors from any branch that does evaluate.
 //!
 //! The §2.2 BNF lists `bare_ident "." bare_ident` (two segments). The reserved
 //! idents table in the same section requires `arg.<key>.<key>...`, which is
@@ -86,9 +97,26 @@ pub enum DslError {
 }
 
 /// Parsed predicate. The internal representation is intentionally opaque so
-/// we can change it without breaking callers.
+/// we can change it without breaking callers. v0 was a single comparison;
+/// v0.1 wraps an `Expr` tree so `OR` / `AND` / parens compose.
 #[derive(Debug, Clone)]
 pub struct Predicate {
+    expr: Expr,
+}
+
+/// Internal AST node. Comparisons are leaves; `And` and `Or` are internal
+/// nodes with two children. Right-associative for parity with how the
+/// parser recurses, but evaluation is associative + short-circuit so
+/// associativity is not observable.
+#[derive(Debug, Clone)]
+enum Expr {
+    Compare(Comparison),
+    And(Box<Expr>, Box<Expr>),
+    Or(Box<Expr>, Box<Expr>),
+}
+
+#[derive(Debug, Clone)]
+struct Comparison {
     ident: Ident,
     op: Op,
     value: Value,
@@ -185,20 +213,17 @@ impl Value {
     }
 }
 
-/// Parse a single predicate. Whitespace between tokens (ident, op, value) is
-/// allowed; whitespace inside a token (mid-identifier, mid-number, mid-quoted
-/// string body, mid-timestamp) is not.
+/// Parse a predicate (one comparison, or any boolean composition of
+/// comparisons via `OR` / `AND` / parens). Whitespace between tokens is
+/// allowed; whitespace inside a token (mid-identifier, mid-number,
+/// mid-quoted string body, mid-timestamp) is not.
 pub fn parse(predicate_text: &str) -> Result<Predicate, DslError> {
     let mut p = Parser::new(predicate_text);
     p.skip_ws();
     if p.peek().is_none() {
         return Err(DslError::Parse("empty predicate".into()));
     }
-    let ident = p.parse_ident()?;
-    p.skip_ws();
-    let op = p.parse_op()?;
-    p.skip_ws();
-    let value = p.parse_value()?;
+    let expr = p.parse_or_expr()?;
     p.skip_ws();
     if let Some(c) = p.peek() {
         return Err(DslError::Parse(format!(
@@ -206,13 +231,39 @@ pub fn parse(predicate_text: &str) -> Result<Predicate, DslError> {
             p.pos
         )));
     }
-    Ok(Predicate { ident, op, value })
+    Ok(Predicate { expr })
 }
 
-/// Evaluate a parsed predicate against a verification context.
+/// Evaluate a parsed predicate against a verification context. `OR` /
+/// `AND` short-circuit on their boolean value (so a denial can guard an
+/// otherwise-erroring branch from running, exactly like in any other
+/// language) but errors from a branch that *does* evaluate propagate
+/// up — never silently coerced to false.
 pub fn evaluate(p: &Predicate, ctx: &Context) -> Result<bool, DslError> {
-    let lhs = resolve_ident(&p.ident, ctx)?;
-    apply_op(p.op, &lhs, &p.value)
+    eval_expr(&p.expr, ctx)
+}
+
+fn eval_expr(e: &Expr, ctx: &Context) -> Result<bool, DslError> {
+    match e {
+        Expr::Compare(c) => {
+            let lhs = resolve_ident(&c.ident, ctx)?;
+            apply_op(c.op, &lhs, &c.value)
+        }
+        Expr::And(a, b) => {
+            if !eval_expr(a, ctx)? {
+                Ok(false)
+            } else {
+                eval_expr(b, ctx)
+            }
+        }
+        Expr::Or(a, b) => {
+            if eval_expr(a, ctx)? {
+                Ok(true)
+            } else {
+                eval_expr(b, ctx)
+            }
+        }
+    }
 }
 
 /// Convenience: parse + evaluate in one shot. The default path used by the
@@ -256,6 +307,92 @@ impl<'a> Parser<'a> {
                 break;
             }
         }
+    }
+
+    /// `or_expr ::= and_expr ("OR" and_expr)*`. Left-associative.
+    fn parse_or_expr(&mut self) -> Result<Expr, DslError> {
+        let mut left = self.parse_and_expr()?;
+        loop {
+            self.skip_ws();
+            if !self.consume_keyword("OR") {
+                break;
+            }
+            self.skip_ws();
+            let right = self.parse_and_expr()?;
+            left = Expr::Or(Box::new(left), Box::new(right));
+        }
+        Ok(left)
+    }
+
+    /// `and_expr ::= unary ("AND" unary)*`. Left-associative; binds
+    /// tighter than `OR`.
+    fn parse_and_expr(&mut self) -> Result<Expr, DslError> {
+        let mut left = self.parse_unary()?;
+        loop {
+            self.skip_ws();
+            if !self.consume_keyword("AND") {
+                break;
+            }
+            self.skip_ws();
+            let right = self.parse_unary()?;
+            left = Expr::And(Box::new(left), Box::new(right));
+        }
+        Ok(left)
+    }
+
+    /// `unary ::= "(" or_expr ")" | comparison`.
+    fn parse_unary(&mut self) -> Result<Expr, DslError> {
+        self.skip_ws();
+        if self.peek() == Some('(') {
+            self.bump();
+            self.skip_ws();
+            let inner = self.parse_or_expr()?;
+            self.skip_ws();
+            match self.peek() {
+                Some(')') => {
+                    self.bump();
+                    Ok(inner)
+                }
+                Some(c) => Err(DslError::Parse(format!(
+                    "expected ')' to close group, found {c:?} at byte {}",
+                    self.pos
+                ))),
+                None => Err(DslError::Parse(
+                    "expected ')' to close group, found EOF".into(),
+                )),
+            }
+        } else {
+            self.parse_comparison().map(Expr::Compare)
+        }
+    }
+
+    /// Try to consume an exact-match uppercase keyword (`OR` / `AND`).
+    /// Returns `true` if consumed. Requires the next character after the
+    /// keyword to be a non-ident-continuation so `ORange` isn't treated
+    /// as `OR ange`. Whitespace handling is the caller's responsibility.
+    fn consume_keyword(&mut self, kw: &str) -> bool {
+        let rest = self.rest();
+        if !rest.starts_with(kw) {
+            return false;
+        }
+        let after = &rest[kw.len()..];
+        let next = after.chars().next();
+        let is_word_continuation = next.is_some_and(|c| c.is_ascii_alphanumeric() || c == '_');
+        if is_word_continuation {
+            return false;
+        }
+        self.pos += kw.len();
+        true
+    }
+
+    /// `comparison ::= ident op value`. Was `parse()`'s body in v0.
+    fn parse_comparison(&mut self) -> Result<Comparison, DslError> {
+        let ident = self.parse_ident()?;
+        self.skip_ws();
+        let op = self.parse_op()?;
+        self.skip_ws();
+        let value = self.parse_value()?;
+        Ok(Comparison { ident, op, value })
     }
 
     fn parse_ident(&mut self) -> Result<Ident, DslError> {

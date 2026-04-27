@@ -795,3 +795,237 @@ proptest! {
         );
     }
 }
+
+// ───────────────────────── boolean composition (v0.1) ─────────────────────────
+//
+// `OR` / `AND` / parens with standard precedence and short-circuit
+// evaluation. Backward-compat: a bare comparison (no boolean op) parses
+// and evaluates exactly as it did in v0; the existing 81 tests above
+// already cover that surface and must keep passing.
+
+#[test]
+fn parses_or_two_comparisons() {
+    parse(r#"tool == "x" OR tool == "y""#).unwrap();
+}
+
+#[test]
+fn parses_and_two_comparisons() {
+    parse(r#"caller == "agent:planner" AND tool == "checkout.purchase""#).unwrap();
+}
+
+#[test]
+fn parses_parens_around_or() {
+    parse(r#"(tool == "x" OR tool == "y") AND caller == "agent:planner""#).unwrap();
+}
+
+#[test]
+fn parses_long_chain_of_ors() {
+    parse(r#"tool == "a" OR tool == "b" OR tool == "c" OR tool == "d""#).unwrap();
+}
+
+#[test]
+fn parses_nested_parens() {
+    parse(r#"((tool == "x" OR tool == "y") AND caller == "z") OR caller == "w""#).unwrap();
+}
+
+#[test]
+fn lowercase_or_and_parsed_as_idents_not_keywords() {
+    // The DSL reserves UPPERCASE `OR` / `AND` only — lowercase tokens
+    // are treated as identifiers, which keeps the keyword surface
+    // visually unambiguous and prevents ambiguity with arg paths like
+    // `arg.or` or `env.and`.
+    assert!(parse(r#"tool == "x" or tool == "y""#).is_err());
+    assert!(parse(r#"tool == "x" and tool == "y""#).is_err());
+}
+
+#[test]
+fn rejects_dangling_or() {
+    assert!(matches!(
+        parse(r#"tool == "x" OR"#),
+        Err(DslError::Parse(_))
+    ));
+}
+
+#[test]
+fn rejects_dangling_and() {
+    assert!(matches!(
+        parse(r#"tool == "x" AND"#),
+        Err(DslError::Parse(_))
+    ));
+}
+
+#[test]
+fn rejects_unbalanced_parens_open() {
+    assert!(matches!(
+        parse(r#"(tool == "x" OR tool == "y""#),
+        Err(DslError::Parse(_))
+    ));
+}
+
+#[test]
+fn rejects_unbalanced_parens_close() {
+    assert!(matches!(parse(r#"tool == "x")"#), Err(DslError::Parse(_))));
+}
+
+#[test]
+fn rejects_or_at_start() {
+    assert!(matches!(
+        parse(r#"OR tool == "x""#),
+        Err(DslError::Parse(_))
+    ));
+}
+
+#[test]
+fn rejects_and_at_start() {
+    assert!(matches!(
+        parse(r#"AND tool == "x""#),
+        Err(DslError::Parse(_))
+    ));
+}
+
+#[test]
+fn or_keyword_followed_by_word_continuation_is_an_ident() {
+    // `ORange == 1` must NOT be parsed as `OR ange == 1`. The keyword
+    // consumer requires a non-ident-continuation after the keyword.
+    // `ORange` parses syntactically (it's a valid identifier shape) and
+    // surfaces as `UnknownIdent` at evaluation — that's the correct
+    // failure mode for "valid syntax, no such fact".
+    let p = parse("ORange == 1").unwrap();
+    assert!(matches!(
+        evaluate(&p, &empty_ctx()),
+        Err(DslError::UnknownIdent(_))
+    ));
+}
+
+// ───────────────────────── evaluation: OR ─────────────────────────
+
+#[test]
+fn or_first_branch_true_short_circuits() {
+    let p = parse(r#"tool == "checkout.purchase" OR tool == "catalog.search""#).unwrap();
+    let ctx = ctx_with("2026-04-27T00:00:00Z", "agent:planner", "checkout.purchase");
+    assert!(evaluate(&p, &ctx).unwrap());
+}
+
+#[test]
+fn or_second_branch_true_when_first_false() {
+    let p = parse(r#"tool == "checkout.purchase" OR tool == "catalog.search""#).unwrap();
+    let ctx = ctx_with("2026-04-27T00:00:00Z", "agent:planner", "catalog.search");
+    assert!(evaluate(&p, &ctx).unwrap());
+}
+
+#[test]
+fn or_both_false_yields_false() {
+    let p = parse(r#"tool == "checkout.purchase" OR tool == "catalog.search""#).unwrap();
+    let ctx = ctx_with("2026-04-27T00:00:00Z", "agent:planner", "bank.wire");
+    assert!(!evaluate(&p, &ctx).unwrap());
+}
+
+#[test]
+fn or_short_circuits_through_error() {
+    // `(tool == "x") OR (unknown_root == "y")` — when the first branch
+    // is true, the second never evaluates, so the unknown-ident error
+    // does not surface. Standard short-circuit semantics; matches what
+    // a programmer would expect from `||`.
+    let p = parse(r#"tool == "x" OR no_such_root == 1"#).unwrap();
+    let ctx = ctx_with("2026-04-27T00:00:00Z", "agent:planner", "x");
+    assert!(evaluate(&p, &ctx).unwrap());
+}
+
+#[test]
+fn or_propagates_error_from_evaluated_branch() {
+    // First branch errors → whole expression errors (no false-positive
+    // allow from an unevaluated second branch).
+    let p = parse(r#"no_such_root == 1 OR tool == "x""#).unwrap();
+    let ctx = ctx_with("2026-04-27T00:00:00Z", "agent:planner", "x");
+    assert!(matches!(evaluate(&p, &ctx), Err(DslError::UnknownIdent(_))));
+}
+
+// ───────────────────────── evaluation: AND ─────────────────────────
+
+#[test]
+fn and_both_true_yields_true() {
+    let p = parse(r#"caller == "agent:planner" AND tool == "checkout.purchase""#).unwrap();
+    let ctx = ctx_with("2026-04-27T00:00:00Z", "agent:planner", "checkout.purchase");
+    assert!(evaluate(&p, &ctx).unwrap());
+}
+
+#[test]
+fn and_first_false_short_circuits() {
+    let p = parse(r#"caller == "agent:rogue" AND no_such_root == 1"#).unwrap();
+    let ctx = ctx_with("2026-04-27T00:00:00Z", "agent:planner", "x");
+    // First branch false → return false without evaluating the second.
+    assert!(!evaluate(&p, &ctx).unwrap());
+}
+
+#[test]
+fn and_second_false_yields_false() {
+    let p = parse(r#"caller == "agent:planner" AND tool == "bank.wire""#).unwrap();
+    let ctx = ctx_with("2026-04-27T00:00:00Z", "agent:planner", "checkout.purchase");
+    assert!(!evaluate(&p, &ctx).unwrap());
+}
+
+// ───────────────────────── precedence ─────────────────────────
+
+#[test]
+fn and_binds_tighter_than_or() {
+    // `a OR b AND c` should parse as `a OR (b AND c)`. Construct facts
+    // such that exactly one bracketing yields the expected truth value:
+    //   a=false, b=true, c=true   → (a OR (b AND c)) = true
+    //   a=false, b=true, c=true   → ((a OR b) AND c) = true (same)
+    //   a=true,  b=true, c=false  → (a OR (b AND c)) = true
+    //                              ((a OR b) AND c) = false  ← differs
+    // We check the second row, where the two parsings disagree.
+    let p =
+        parse(r#"caller == "agent:planner" OR tool == "checkout.purchase" AND arg.flag == "yes""#)
+            .unwrap();
+    let mut ctx = ctx_with("2026-04-27T00:00:00Z", "agent:planner", "checkout.purchase");
+    ctx.args = serde_json::json!({"flag": "no"}); // c is false
+                                                  // a is true, so (a OR ...) = true regardless of the AND branch.
+                                                  // If precedence were the other way, ((a OR b) AND c) would be
+                                                  // (true AND false) = false.
+    assert!(evaluate(&p, &ctx).unwrap());
+}
+
+#[test]
+fn parens_override_precedence() {
+    // Now the same a/b/c with explicit parens — and `c=false` makes the
+    // result false. Confirms parens change the parse, not just decoration.
+    let p = parse(
+        r#"(caller == "agent:planner" OR tool == "checkout.purchase") AND arg.flag == "yes""#,
+    )
+    .unwrap();
+    let mut ctx = ctx_with("2026-04-27T00:00:00Z", "agent:planner", "checkout.purchase");
+    ctx.args = serde_json::json!({"flag": "no"});
+    assert!(!evaluate(&p, &ctx).unwrap());
+}
+
+// ───────────────────────── motivating use-case (single-cap version of the demo) ─────────────────────────
+
+#[test]
+fn single_capability_now_covers_browse_or_buy() {
+    // The shopping-agent demo issued TWO capabilities (browse + buy)
+    // because v0 had no `OR`. With v0.1 boolean composition, one
+    // capability with a disjunction can authorise both reads and
+    // writes — the operational simplification real users asked for.
+    let p =
+        parse(r#"tool == "catalog.search" OR (tool == "checkout.purchase" AND arg.amount <= 50)"#)
+            .unwrap();
+
+    // Allow: catalog search.
+    let mut ctx = ctx_with("2026-04-27T00:00:00Z", "agent:planner", "catalog.search");
+    assert!(evaluate(&p, &ctx).unwrap());
+
+    // Allow: in-budget purchase.
+    ctx = ctx_with("2026-04-27T00:00:00Z", "agent:planner", "checkout.purchase");
+    ctx.args = serde_json::json!({"amount": 13});
+    assert!(evaluate(&p, &ctx).unwrap());
+
+    // Deny: out-of-budget purchase.
+    ctx = ctx_with("2026-04-27T00:00:00Z", "agent:planner", "checkout.purchase");
+    ctx.args = serde_json::json!({"amount": 999});
+    assert!(!evaluate(&p, &ctx).unwrap());
+
+    // Deny: out-of-scope tool.
+    ctx = ctx_with("2026-04-27T00:00:00Z", "agent:planner", "bank.wire");
+    assert!(!evaluate(&p, &ctx).unwrap());
+}
