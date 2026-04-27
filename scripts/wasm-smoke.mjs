@@ -80,6 +80,11 @@ const requiredExports = [
   { kind: "class", name: "Capability" },
   { kind: "class", name: "Verifier" },
   { kind: "class", name: "Auditor" },
+  // v0.1 — holder-of-key surface (DESIGN.md §11, V0_1_SPEC.md §3.2). The
+  // four wasm-bindgen items below MUST appear with these exact JS-side
+  // names; Terminal C develops the TS wrappers against this contract from
+  // a stub, so any drift breaks the merge.
+  { kind: "function", name: "popChallengeFor" },
 ];
 
 for (const { kind, name } of requiredExports) {
@@ -113,6 +118,16 @@ const requiredMethodFragments = [
   // Verifier
   /\bverify\s*\(/,
   /\bverifyWithContext\s*\(/,
+  // v0.1 hok surface — see V0_1_SPEC.md §3.2.
+  // Builder method that binds an ed25519 pubkey before any caveat.
+  /\bholderOfKey\s*\(/,
+  // Capability getter exposing the bound ed25519 pubkey, or undefined
+  // for non-hok tokens. wasm-bindgen renders TS getters as bare
+  // `readonly holderOfKey:` declarations, so we match the property
+  // form rather than `get holderOfKey()`.
+  /\breadonly\s+holderOfKey\b/,
+  // Verifier four-gate proof-of-possession entry point.
+  /\bverifyWithProof\s*\(/,
 ];
 
 for (const re of requiredMethodFragments) {
@@ -154,7 +169,18 @@ if (existsSync(pkgJsonPath)) {
 try {
   const entry = resolve(pkgDir, "capnagent_wasm.js");
   const mod = await import(pathToFileURL(entry).href);
-  const names = ["init", "Issuer", "CapabilityBuilder", "Capability", "Verifier", "Auditor"];
+  const names = [
+    "init",
+    "Issuer",
+    "CapabilityBuilder",
+    "Capability",
+    "Verifier",
+    "Auditor",
+    // v0.1 hok surface — `popChallengeFor` is the only free function
+    // added; the three class-level additions ride along on the existing
+    // class objects and aren't separately exported.
+    "popChallengeFor",
+  ];
   const missing = names.filter((n) => typeof mod[n] !== "function");
   if (missing.length === 0) {
     ok(`runtime ESM import resolved every named export (${names.join(", ")})`);
