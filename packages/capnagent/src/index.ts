@@ -284,16 +284,116 @@ export class Auditor {
   }
 }
 
+/**
+ * In-memory nonce store for replay protection on `verifyWithProof`.
+ *
+ * Construct once and pass to `Verifier.withNonceStore(...)`. The
+ * handle stays inspectable from JS even after install — both this
+ * wrapper and the verifier hold a shared reference to the same store.
+ *
+ * Has no effect on `verifyWithContext` — non-hok bearer tokens are
+ * explicitly designed to be reusable.
+ *
+ * Production deployments that need cross-process / cross-restart
+ * replay resistance should provide a custom `NonceStore` impl in Rust
+ * and depend on `capnagent-core` directly. The TS surface only ships
+ * the in-memory backing.
+ */
+export class NonceStore {
+  /** @internal — wrapper's handle on the wasm-bindgen instance. */
+  readonly _inner: wasm.NonceStore;
+
+  /** Construct a fresh, empty in-memory nonce store. */
+  constructor() {
+    ensureReady();
+    try {
+      this._inner = new wasm.NonceStore();
+    } catch (e) {
+      mapWasmError(e, "generic");
+    }
+  }
+
+  /**
+   * Number of entries currently held (including expired ones that have
+   * not yet been overwritten). Useful for tests and metrics.
+   */
+  get size(): number {
+    ensureReady();
+    return this._inner.size;
+  }
+
+  /** Whether the store has zero entries. */
+  get isEmpty(): boolean {
+    ensureReady();
+    return this._inner.isEmpty;
+  }
+
+  /**
+   * Drop all recorded nonces. Useful for tests; production callers
+   * rarely want this — replay protection depends on entries persisting
+   * for the full TTL.
+   */
+  clear(): void {
+    ensureReady();
+    this._inner.clear();
+  }
+}
+
 /** Verifies capabilities against the root key (and a context, for caveats). */
 export class Verifier {
   /** @internal */
-  readonly _inner: wasm.Verifier;
+  _inner: wasm.Verifier;
 
   /** Construct a verifier from the root key. */
   constructor(key: Uint8Array) {
     ensureReady();
     try {
       this._inner = new wasm.Verifier(key);
+    } catch (e) {
+      mapWasmError(e, "chain");
+    }
+  }
+
+  /**
+   * Install a {@link NonceStore} for replay protection on
+   * `verifyWithProof`. Each accepted proof's `sha256(proof)` is
+   * recorded with the configured TTL (default 5 minutes); subsequent
+   * calls within the TTL produce a denial receipt with reason
+   * `"proof replay detected"`.
+   *
+   * Has no effect on `verifyWithContext` — non-hok bearer tokens are
+   * explicitly designed to be reusable.
+   *
+   * Returns `this` so calls can be chained. The underlying WASM handle
+   * is consumed and replaced; do not retain references to the
+   * pre-call instance.
+   */
+  withNonceStore(store: NonceStore): this {
+    ensureReady();
+    try {
+      this._inner = this._inner.withNonceStore(store._inner);
+      return this;
+    } catch (e) {
+      mapWasmError(e, "chain");
+    }
+  }
+
+  /**
+   * Override the per-nonce TTL in milliseconds. Default is 5 minutes.
+   * Only meaningful in combination with {@link withNonceStore}.
+   *
+   * Returns `this` so calls can be chained.
+   */
+  withNonceTtlMs(ttlMs: number): this {
+    ensureReady();
+    if (!Number.isInteger(ttlMs) || ttlMs < 0) {
+      throw new CapabilityError(
+        `Verifier.withNonceTtlMs: ttlMs must be a non-negative integer (got ${ttlMs})`,
+      );
+    }
+    try {
+      this._inner = this._inner.withNonceTtlMs(BigInt(ttlMs));
+      return this;
     } catch (e) {
       mapWasmError(e, "chain");
     }

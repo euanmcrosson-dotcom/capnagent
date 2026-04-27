@@ -24,7 +24,10 @@
 #![deny(unsafe_code)]
 #![allow(missing_docs)] // Each `#[wasm_bindgen]` item is documented via TS
 
+use std::sync::Arc;
+
 use capnagent_core as core;
+use core::nonce_store::{InMemoryNonceStore, NonceStore as CoreNonceStore};
 use serde_wasm_bindgen::{from_value as js_to, to_value as to_js};
 use wasm_bindgen::prelude::*;
 
@@ -151,19 +154,55 @@ impl Capability {
 // Verifier
 // ---------------------------------------------------------------------------
 
+/// Verifier wrapper.
+///
+/// Held as `Option<core::Verifier>` so the consuming-style builder
+/// methods (`withNonceStore`, `withNonceTtlMs`) can use the
+/// `take()` pattern without forcing the underlying core type to add
+/// `&mut self` setters. Same shape as `CapabilityBuilder`.
+///
+/// Once a builder method is called, the receiver is consumed; calling
+/// any method on the consumed handle is a programmer error and
+/// surfaces as a JS-side `Error`.
 #[wasm_bindgen]
-pub struct Verifier(core::Verifier);
+pub struct Verifier(Option<core::Verifier>);
 
 #[wasm_bindgen]
 impl Verifier {
     #[wasm_bindgen(constructor)]
     pub fn new(key: &[u8]) -> Self {
-        Self(core::Verifier::new(key))
+        Self(Some(core::Verifier::new(key)))
+    }
+
+    /// Install a [`NonceStore`] for replay protection on
+    /// `verifyWithProof`. Has no effect on `verifyWithContext` —
+    /// non-hok bearer tokens are explicitly designed to be reusable.
+    /// Returns `this` so calls can be chained.
+    #[wasm_bindgen(js_name = "withNonceStore")]
+    pub fn with_nonce_store(mut self, store: &NonceStore) -> Result<Verifier, JsError> {
+        let inner = self
+            .0
+            .take()
+            .ok_or_else(|| JsError::new("Verifier already consumed by a builder call"))?;
+        let dyn_store: Arc<dyn CoreNonceStore> = Arc::clone(&store.0) as _;
+        Ok(Verifier(Some(inner.with_nonce_store(dyn_store))))
+    }
+
+    /// Override the per-nonce TTL in milliseconds. Default is 5 minutes.
+    /// Only meaningful in combination with `withNonceStore`.
+    /// Returns `this` so calls can be chained.
+    #[wasm_bindgen(js_name = "withNonceTtlMs")]
+    pub fn with_nonce_ttl_ms(mut self, ttl_ms: u64) -> Result<Verifier, JsError> {
+        let inner = self
+            .0
+            .take()
+            .ok_or_else(|| JsError::new("Verifier already consumed by a builder call"))?;
+        Ok(Verifier(Some(inner.with_nonce_ttl_ms(ttl_ms))))
     }
 
     /// Chain-only verification. Throws if the HMAC chain doesn't match.
     pub fn verify(&self, cap: &Capability) -> Result<(), JsError> {
-        self.0
+        self.inner()?
             .verify(&cap.0)
             .map(|_| ())
             .map_err(|e| JsError::new(&e.to_string()))
@@ -182,7 +221,7 @@ impl Verifier {
     ) -> Result<JsValue, JsError> {
         let ctx_native = decode_context(ctx)?;
         let receipt = self
-            .0
+            .inner()?
             .verify_with_context(&cap.0, &ctx_native, &auditor.0)
             .map_err(|e| JsError::new(&e.to_string()))?;
         to_js(&receipt).map_err(|e| JsError::new(&e.to_string()))
@@ -193,6 +232,12 @@ impl Verifier {
     /// signature the holder produced over `challenge`. `challenge` is
     /// arbitrary bytes (use [`pop_challenge_for`] for the documented
     /// default).
+    ///
+    /// If a [`NonceStore`] has been installed via `withNonceStore`,
+    /// `sha256(proof_bytes)` is checked against the store between the
+    /// proof and revocation gates; replays surface as
+    /// `Outcome::Denied { reason: "proof replay detected" }` — they
+    /// are NOT thrown.
     ///
     /// Throws on `VerifyError::Chain` (forged token) and
     /// `VerifyError::Audit`, same shape as `verifyWithContext`. A
@@ -220,10 +265,69 @@ impl Verifier {
         }
         let ctx_native = decode_context(ctx)?;
         let receipt = self
-            .0
+            .inner()?
             .verify_with_proof(&cap.0, &ctx_native, &auditor.0, challenge, proof)
             .map_err(|e| JsError::new(&e.to_string()))?;
         to_js(&receipt).map_err(|e| JsError::new(&e.to_string()))
+    }
+}
+
+impl Verifier {
+    fn inner(&self) -> Result<&core::Verifier, JsError> {
+        self.0
+            .as_ref()
+            .ok_or_else(|| JsError::new("Verifier already consumed by a builder call"))
+    }
+}
+
+// ---------------------------------------------------------------------------
+// NonceStore — replay protection backing store.
+// ---------------------------------------------------------------------------
+
+/// JS-visible handle on an in-memory [`InMemoryNonceStore`]. Construct
+/// one and pass it to [`Verifier::with_nonce_store`] to enable replay
+/// protection on `verifyWithProof`. The handle stays inspectable from
+/// JS (`size`, `isEmpty`, `clear`) even after install — both this
+/// wrapper and the verifier hold an `Arc` of the same store.
+///
+/// Production deployments that need cross-process / cross-restart
+/// replay resistance should provide their own `NonceStore` impl in
+/// Rust (Redis, Postgres, Trillian) and depend on `capnagent-core`
+/// directly.
+#[wasm_bindgen]
+pub struct NonceStore(Arc<InMemoryNonceStore>);
+
+#[wasm_bindgen]
+impl NonceStore {
+    /// Construct a fresh, empty in-memory nonce store.
+    #[wasm_bindgen(constructor)]
+    pub fn new() -> Self {
+        Self(Arc::new(InMemoryNonceStore::new()))
+    }
+
+    /// Number of entries currently held (including expired ones that
+    /// have not yet been overwritten). Useful for tests and metrics.
+    #[wasm_bindgen(getter)]
+    pub fn size(&self) -> usize {
+        self.0.len()
+    }
+
+    /// Whether the store has zero entries.
+    #[wasm_bindgen(getter, js_name = "isEmpty")]
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    /// Drop all recorded nonces. Useful for tests; production callers
+    /// rarely want this.
+    pub fn clear(&self) {
+        self.0.clear();
+    }
+}
+
+impl Default for NonceStore {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
