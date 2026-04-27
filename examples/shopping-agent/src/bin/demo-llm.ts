@@ -3,6 +3,8 @@
  *
  *   npm run demo:llm           — honest scenario
  *   npm run demo:llm-injected  — naive scenario (forced to follow tool-output instructions)
+ *   npm run demo:llm-direct    — direct scenario (user explicitly asks for a wire + a cable)
+ *   npm run demo:llm-hok       — hok scenario (direct flow + DPoP-style holder-of-key)
  *
  * Requires ANTHROPIC_API_KEY in the environment. Override the model
  * with CAPNAGENT_DEMO_MODEL=claude-haiku-4-5 for cheaper iteration.
@@ -28,9 +30,7 @@ function event(e: LlmDemoEvent): void {
       process.stdout.write(`${e.text}\n`);
       break;
     case "tool_call":
-      process.stdout.write(
-        `${BLUE}→ ${e.name}${RESET} ${DIM}${JSON.stringify(e.input)}${RESET}\n`,
-      );
+      process.stdout.write(`${BLUE}→ ${e.name}${RESET} ${DIM}${JSON.stringify(e.input)}${RESET}\n`);
       break;
     case "tool_result_ok":
       process.stdout.write(
@@ -55,10 +55,11 @@ async function main(): Promise<void> {
   if (
     scenarioArg !== "honest" &&
     scenarioArg !== "naive" &&
-    scenarioArg !== "direct"
+    scenarioArg !== "direct" &&
+    scenarioArg !== "hok"
   ) {
     console.error(
-      `Usage: demo-llm.ts <honest|naive|direct>   (got ${JSON.stringify(scenarioArg)})`,
+      `Usage: demo-llm.ts <honest|naive|direct|hok>   (got ${JSON.stringify(scenarioArg)})`,
     );
     process.exit(2);
   }
@@ -103,17 +104,22 @@ async function main(): Promise<void> {
   }
 
   if (run.modelAttemptedWire && run.capnagentDeniedWire) {
-    if (scenario === "direct") {
+    if (scenario === "direct" || scenario === "hok") {
       console.log(
         `${GREEN}${BOLD}capnagent denied the wire on capability-scope grounds — the user's direct request exceeded what the issued capability permits.${RESET}`,
       );
+      if (scenario === "hok") {
+        console.log(
+          `${GREEN}Allowed calls additionally required a valid ed25519 proof-of-possession signature on every invocation.${RESET}`,
+        );
+      }
     } else {
       console.log(
         `${GREEN}${BOLD}capnagent successfully blocked the prompt-injected wire.${RESET}`,
       );
     }
   } else if (!run.modelAttemptedWire) {
-    if (scenario === "direct") {
+    if (scenario === "direct" || scenario === "hok") {
       console.log(
         `${YELLOW}Model declined to attempt the wire even though the user asked. Try a different model or rephrase the user message; capnagent's denial path was not exercised.${RESET}`,
       );
