@@ -121,9 +121,22 @@ export function createMockShop(opts?: {
       switch (name) {
         case "catalog.search": {
           const { query } = args as SearchArgs;
-          return catalog.filter((p) =>
-            p.title.toLowerCase().includes(query.toLowerCase()),
-          );
+          // Tokenize the query and AND-match across title, description,
+          // merchant, and id. Realistic enough that an agent including
+          // the merchant or product family in its query (e.g.
+          // "USB-C cable amazon.com") still gets results back. The
+          // first cut filtered by case-insensitive substring on title
+          // only, which Claude's natural query phrasing routinely missed.
+          const tokens = query
+            .toLowerCase()
+            .split(/\s+/)
+            .filter((t) => t.length > 0);
+          return catalog.filter((p) => {
+            const haystack = [p.title, p.description, p.merchant, p.id]
+              .join(" ")
+              .toLowerCase();
+            return tokens.every((t) => haystack.includes(t));
+          });
         }
         case "checkout.purchase": {
           const a = args as PurchaseArgs;
