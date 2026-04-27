@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **bench: criterion harness for the verify pipeline.** New
+  `crates/capnagent-core/benches/verify_pipeline.rs` measures per-call
+  latency for all four verifier entry points: chain-only verify,
+  `verify_with_context` (bearer-token full pipeline), `verify_with_proof`
+  (hok full pipeline), and `verify_with_proof` with replay store
+  installed. Run via `cargo bench -p capnagent-core --bench
+  verify_pipeline`. Headline numbers (single-core, criterion 100-sample
+  mean): chain-only 1.4 µs, bearer-token 11 µs, hok 56 µs, hok+replay
+  170 µs. Sustains ~17 kHz of full hok+replay verifications per core,
+  two orders of magnitude above any single agent's call rate. README
+  + Show HN post updated with the table and methodology.
 - **v0.1 — NonceStore TS/WASM surface.** `@capnagent/core` now exports
   a `NonceStore` class plus `Verifier.withNonceStore(store)` and
   `Verifier.withNonceTtlMs(ttlMs)` builder methods. Backed by the

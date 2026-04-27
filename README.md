@@ -169,6 +169,36 @@ Two non-LLM real-world consumers ship alongside it:
 - [`examples/mcp-http-agent/README.md`](examples/mcp-http-agent/README.md) —
   origin-scoped HTTP/fetch.
 
+## Performance
+
+Per-call verifier latency from `cargo bench -p capnagent-core --bench
+verify_pipeline`, measured on a single core (criterion 100-sample
+mean, Windows 11, Rust 1.x release build):
+
+| Path                                                      | Time     |
+|-----------------------------------------------------------|----------|
+| `verify(cap)` — chain-only HMAC integrity check           |  1.4 µs  |
+| `verify_with_context(...)` — full bearer-token pipeline   | 10.6 µs  |
+| `verify_with_proof(...)` — full hok pipeline (no replay)  |   56 µs  |
+| `verify_with_proof(...) + InMemoryNonceStore`             |  170 µs  |
+
+The dominant cost in the hok paths is ed25519 verification (~45 µs);
+HMAC chain check, caveat evaluation, and receipt signing together fit
+in the remaining ~10 µs. The replay-protected path adds the cost of
+sha256(proof) + a hashmap lookup under a `Mutex`; production
+deployments using a Redis-backed `NonceStore` will see this dominated
+by the round-trip to Redis instead.
+
+> Throughput rule of thumb: a single core sustains ~17,000 hok
+> verifications/second with replay protection enabled. Two-orders-of-
+> magnitude headroom above the call rate of any single AI agent.
+
+Re-run locally with:
+
+```bash
+cargo bench -p capnagent-core --bench verify_pipeline
+```
+
 ## Security model
 
 The full threat model is in [`docs/DESIGN.md`](docs/DESIGN.md) §2. The

@@ -31,7 +31,7 @@ jobs:
         run: cargo fmt --all --check
 
       - name: cargo clippy (core)
-        run: cargo clippy -p capnagent-core --tests -- -D warnings
+        run: cargo clippy -p capnagent-core --tests --benches -- -D warnings
 
       - name: cargo clippy (wasm)
         run: cargo clippy -p capnagent-wasm -- -D warnings

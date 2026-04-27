@@ -35,3 +35,8 @@ proptest = "1"
 ed25519-dalek = { version = "2", features = ["rand_core"] }
 rand = "0.8"
 base64 = "0.22"
+criterion = { version = "0.5", default-features = false }
+
+[[bench]]
+name = "verify_pipeline"
+harness = false

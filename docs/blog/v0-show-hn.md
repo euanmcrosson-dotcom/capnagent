@@ -35,6 +35,17 @@ The verifier runs five gates, in order, before letting a tool call proceed:
 
 If any gate denies, the call is refused before the underlying tool surface sees it. Denials produce signed receipts so the audit log captures *every attempt*, including the ones that would have been silently dropped by a layer above.
 
+## Performance
+
+Per-call verifier latency from the criterion bench in the repo (`cargo bench -p capnagent-core --bench verify_pipeline`):
+
+- **chain-only verify**: 1.4 µs
+- **full bearer-token pipeline (`verify_with_context`)**: 11 µs
+- **full hok pipeline (`verify_with_proof`)**: 56 µs
+- **full hok pipeline + replay store**: 170 µs
+
+The hok paths are dominated by ed25519 verification (~45 µs). HMAC chain check, caveat evaluation, and receipt signing together fit in ~10 µs. Production deployments running with a Redis-backed `NonceStore` will see the replay-leg cost dominated by the round-trip to Redis, not by the in-memory store. A single core sustains ~17,000 hok verifications/second with replay protection enabled — two orders of magnitude above the call rate of any single agent.
+
 ## The demo
 
 The repo ships an end-to-end shopping-agent demo wired into the official Anthropic TypeScript SDK. It runs as a normal agentic loop — the model decides which tools to call, the harness executes them — but every tool call routes through `wrapMCPClient`, capnagent's MCP adapter that intercepts at the `tools/call` boundary.
