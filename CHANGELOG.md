@@ -9,6 +9,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **v0.3 — RevocationList + Revoker exposed through WASM/TS.** Closes
+  the engine-parity gap surfaced by purple-team round 04 (WASM
+  bindings did not yet expose revocation; round 04's PoC was
+  Rust-only as a result). `@capnagent/core` now exports `Revoker`
+  and `RevocationList` classes plus `Verifier.withRevocationList(list)`.
+
+  - `Revoker(rootKey)` — issuer-side helper. `revoke(id)` /
+    `unrevoke(id)` / `publish(issuedAtMs) → RevocationList`.
+  - `RevocationList` — `parse(token)` / `serialize()` for wire
+    transport (URL-safe base64), `contains(id)`, `size`, `isEmpty`,
+    `issuedAtMs` getters.
+  - `Verifier.withRevocationList(list)` — install-time signature
+    check against the verifier's root key. Mismatch throws
+    `CapabilityChainError("invalid revocation-list signature")` AND
+    leaves the verifier handle valid for retry. This is `&mut self`
+    on the WASM side rather than the consuming pattern used by
+    `withNonceStore` / `withNonceTtlMs`, because those can never
+    fail — `withRevocationList` can, and consume-on-failure would
+    null the JS pointer with no recovery path.
+  - The Verifier WASM wrapper now retains `root_key: Vec<u8>` for
+    pre-checking list signatures before consuming the inner
+    `core::Verifier`. Minor key-duplication footprint; the
+    alternative is a far-worse JS API ergonomics story.
+
+  11 new tests in `packages/capnagent/src/__tests__/revocation.test.ts`
+  against the real WASM artifact. Round 04's existing Rust PoC
+  stands; a future round-04 TS-flavored PoC is now possible against
+  this surface.
+
 - **Purple-team rounds 03, 04, 05 — closes every previously-empty
   gate column in the corpus.** Three rounds shipped in a single
   parallel-worktree pass:

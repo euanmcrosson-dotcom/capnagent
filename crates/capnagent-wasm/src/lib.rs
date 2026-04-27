@@ -28,6 +28,9 @@ use std::sync::Arc;
 
 use capnagent_core as core;
 use core::nonce_store::{InMemoryNonceStore, NonceStore as CoreNonceStore};
+use core::revocation::{
+    RevocationList as CoreRevocationList, Revoker as CoreRevoker,
+};
 use serde_wasm_bindgen::{from_value as js_to, to_value as to_js};
 use wasm_bindgen::prelude::*;
 
@@ -157,21 +160,36 @@ impl Capability {
 /// Verifier wrapper.
 ///
 /// Held as `Option<core::Verifier>` so the consuming-style builder
-/// methods (`withNonceStore`, `withNonceTtlMs`) can use the
-/// `take()` pattern without forcing the underlying core type to add
-/// `&mut self` setters. Same shape as `CapabilityBuilder`.
+/// methods (`withNonceStore`, `withNonceTtlMs`, `withRevocationList`)
+/// can use the `take()` pattern without forcing the underlying core
+/// type to add `&mut self` setters. Same shape as `CapabilityBuilder`.
 ///
-/// Once a builder method is called, the receiver is consumed; calling
-/// any method on the consumed handle is a programmer error and
-/// surfaces as a JS-side `Error`.
+/// The `root_key` is duplicated here from `core::Verifier`'s private
+/// field so builder methods that need to validate inputs against the
+/// root key (e.g. `withRevocationList` checking the list signature)
+/// can do so BEFORE consuming the inner. This means a failed install
+/// leaves the Verifier handle usable for retry — the alternative
+/// (consume-then-fail) leaves a null pointer that breaks the next
+/// JS-side call with a confusing error.
+///
+/// Once a successful builder method is called, the receiver is
+/// consumed; calling any method on the consumed handle surfaces as
+/// a JS-side `Error` with message
+/// `"Verifier already consumed by a builder call"`.
 #[wasm_bindgen]
-pub struct Verifier(Option<core::Verifier>);
+pub struct Verifier {
+    inner: Option<core::Verifier>,
+    root_key: Vec<u8>,
+}
 
 #[wasm_bindgen]
 impl Verifier {
     #[wasm_bindgen(constructor)]
     pub fn new(key: &[u8]) -> Self {
-        Self(Some(core::Verifier::new(key)))
+        Self {
+            inner: Some(core::Verifier::new(key)),
+            root_key: key.to_vec(),
+        }
     }
 
     /// Install a [`NonceStore`] for replay protection on
@@ -181,11 +199,14 @@ impl Verifier {
     #[wasm_bindgen(js_name = "withNonceStore")]
     pub fn with_nonce_store(mut self, store: &NonceStore) -> Result<Verifier, JsError> {
         let inner = self
-            .0
+            .inner
             .take()
             .ok_or_else(|| JsError::new("Verifier already consumed by a builder call"))?;
         let dyn_store: Arc<dyn CoreNonceStore> = Arc::clone(&store.0) as _;
-        Ok(Verifier(Some(inner.with_nonce_store(dyn_store))))
+        Ok(Verifier {
+            inner: Some(inner.with_nonce_store(dyn_store)),
+            root_key: self.root_key,
+        })
     }
 
     /// Override the per-nonce TTL in milliseconds. Default is 5 minutes.
@@ -194,10 +215,54 @@ impl Verifier {
     #[wasm_bindgen(js_name = "withNonceTtlMs")]
     pub fn with_nonce_ttl_ms(mut self, ttl_ms: u64) -> Result<Verifier, JsError> {
         let inner = self
-            .0
+            .inner
             .take()
             .ok_or_else(|| JsError::new("Verifier already consumed by a builder call"))?;
-        Ok(Verifier(Some(inner.with_nonce_ttl_ms(ttl_ms))))
+        Ok(Verifier {
+            inner: Some(inner.with_nonce_ttl_ms(ttl_ms)),
+            root_key: self.root_key,
+        })
+    }
+
+    /// Install a signed [`RevocationList`]. The list's HMAC signature
+    /// is verified against the verifier's root key BEFORE installation;
+    /// mismatch throws a JS-side `Error` with message `"invalid
+    /// revocation-list signature"` AND leaves the receiver unchanged
+    /// (a JS-side caller can retry with a different list without
+    /// throwing away the Verifier handle).
+    ///
+    /// This is `&mut self` rather than the consuming `mut self` shape
+    /// used by `withNonceStore` / `withNonceTtlMs` — those can never
+    /// fail, so the consuming pattern is fine. `withRevocationList`
+    /// can fail (signature mismatch), and consume-on-failure would
+    /// leave callers with a null pointer they can't recover from.
+    ///
+    /// Once installed, every subsequent `verifyWithContext` /
+    /// `verifyWithProof` call denies any capability whose identifier
+    /// is in the list — denial reason
+    /// `"capability revoked: <identifier>"`, audit-loggable like every
+    /// other denial.
+    ///
+    /// The TS wrapper layers chainable `return this` on top of this
+    /// void-returning surface.
+    #[wasm_bindgen(js_name = "withRevocationList")]
+    pub fn with_revocation_list(&mut self, list: &RevocationList) -> Result<(), JsError> {
+        // Pre-check: verify the list's HMAC against our retained
+        // root_key BEFORE touching `self.inner`. On signature mismatch
+        // we return Err while leaving `self.inner` untouched.
+        list.0
+            .verify_signature(&self.root_key)
+            .map_err(|e| JsError::new(&e.to_string()))?;
+        let inner = self
+            .inner
+            .take()
+            .ok_or_else(|| JsError::new("Verifier already consumed by a builder call"))?;
+        // Signature already verified above; this can't fail.
+        let installed = inner
+            .with_revocation_list(list.0.clone())
+            .expect("signature pre-check passed");
+        self.inner = Some(installed);
+        Ok(())
     }
 
     /// Chain-only verification. Throws if the HMAC chain doesn't match.
@@ -274,7 +339,7 @@ impl Verifier {
 
 impl Verifier {
     fn inner(&self) -> Result<&core::Verifier, JsError> {
-        self.0
+        self.inner
             .as_ref()
             .ok_or_else(|| JsError::new("Verifier already consumed by a builder call"))
     }
@@ -328,6 +393,128 @@ impl NonceStore {
 impl Default for NonceStore {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// RevocationList + Revoker — issuer-side capability revocation.
+// ---------------------------------------------------------------------------
+
+/// A point-in-time, HMAC-signed list of revoked capability
+/// identifiers. Issued by [`Revoker::publish`]; installed on a
+/// [`Verifier`] via `withRevocationList(...)`.
+///
+/// Wire-portable: `serialize()` returns base64 bytes the issuer can
+/// send to verifiers; `parse(token)` decodes them. The signature is
+/// part of the wire format — verifiers re-check it at install time.
+///
+/// See `docs/DESIGN.md` §10 for the design rationale.
+#[wasm_bindgen]
+pub struct RevocationList(CoreRevocationList);
+
+#[wasm_bindgen]
+impl RevocationList {
+    /// Decode a previously-serialized revocation list from its
+    /// base64 wire form. Throws `Error` on malformed input.
+    pub fn parse(token: &str) -> Result<RevocationList, JsError> {
+        use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+        use base64::Engine as _;
+
+        let bytes = URL_SAFE_NO_PAD
+            .decode(token.as_bytes())
+            .map_err(|e| JsError::new(&format!("base64 decode: {e}")))?;
+        let inner: CoreRevocationList = serde_json::from_slice(&bytes)
+            .map_err(|e| JsError::new(&format!("revocation list parse: {e}")))?;
+        Ok(RevocationList(inner))
+    }
+
+    /// Encode this list as a URL-safe, unpadded base64 string.
+    /// Round-trips through `parse`. The signature is included in the
+    /// wire format.
+    pub fn serialize(&self) -> Result<String, JsError> {
+        use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+        use base64::Engine as _;
+
+        let bytes = serde_json::to_vec(&self.0)
+            .map_err(|e| JsError::new(&format!("revocation list serialize: {e}")))?;
+        Ok(URL_SAFE_NO_PAD.encode(&bytes))
+    }
+
+    /// Whether `identifier` appears in the revocation list.
+    /// O(log n) — the underlying `revoked` vec is required to be sorted.
+    pub fn contains(&self, identifier: &str) -> bool {
+        self.0.contains(identifier)
+    }
+
+    /// Number of revoked identifiers.
+    #[wasm_bindgen(getter)]
+    pub fn size(&self) -> usize {
+        self.0.len()
+    }
+
+    /// Whether the list has zero revocations.
+    #[wasm_bindgen(getter, js_name = "isEmpty")]
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    /// Wall-clock the list was published, milliseconds since UNIX
+    /// epoch. Verifiers may reject lists older than a configured
+    /// staleness window; that policy lives at the caller, not here.
+    #[wasm_bindgen(getter, js_name = "issuedAtMs")]
+    pub fn issued_at_ms(&self) -> u64 {
+        self.0.issued_at_ms
+    }
+}
+
+/// Issuer-side helper for building and signing revocation lists.
+/// Holds the root key plus the in-memory set of revoked identifiers.
+/// Call `publish(issuedAtMs)` to mint a fresh signed snapshot
+/// suitable for handing to a [`Verifier`].
+#[wasm_bindgen]
+pub struct Revoker(CoreRevoker);
+
+#[wasm_bindgen]
+impl Revoker {
+    /// Construct a Revoker from the same root key the Issuer uses.
+    #[wasm_bindgen(constructor)]
+    pub fn new(root_key: &[u8]) -> Self {
+        Self(CoreRevoker::new(root_key))
+    }
+
+    /// Mark a capability identifier as revoked. Idempotent — calling
+    /// `revoke("buy-123")` twice is the same as once.
+    pub fn revoke(&mut self, identifier: String) {
+        self.0.revoke(identifier);
+    }
+
+    /// Remove an identifier from the revoked set. Returns `true` if
+    /// the entry was present and removed, `false` otherwise. Use
+    /// sparingly — "unrevoke" makes auditors nervous and is not
+    /// always supported by downstream policy.
+    pub fn unrevoke(&mut self, identifier: &str) -> bool {
+        self.0.unrevoke(identifier)
+    }
+
+    /// Number of currently-revoked identifiers held by the Revoker
+    /// (NOT the published-list count, which is fixed at publish time).
+    #[wasm_bindgen(getter)]
+    pub fn size(&self) -> usize {
+        self.0.len()
+    }
+
+    /// Whether the Revoker has any entries.
+    #[wasm_bindgen(getter, js_name = "isEmpty")]
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    /// Snapshot the current revoked set into a signed [`RevocationList`].
+    /// Pass `issuedAtMs` from a clock authority you trust (NOT
+    /// `Date.now()` from inside the verifier — the issuer's clock is
+    /// the right authority for "when was this list published").
+    pub fn publish(&self, issued_at_ms: u64) -> RevocationList {
+        RevocationList(self.0.publish(issued_at_ms))
     }
 }
 

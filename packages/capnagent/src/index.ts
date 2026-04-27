@@ -285,6 +285,152 @@ export class Auditor {
 }
 
 /**
+ * A point-in-time, HMAC-signed list of revoked capability identifiers.
+ * Issued by `Revoker.publish(...)`; installed on a `Verifier` via
+ * `withRevocationList(...)`. Wire-portable: `serialize()` returns a
+ * URL-safe base64 string the issuer can ship to verifiers; the
+ * verifier re-checks the signature at install time.
+ *
+ * See `docs/DESIGN.md` §10 for the design rationale.
+ */
+export class RevocationList {
+  /** @internal */
+  readonly _inner: wasm.RevocationList;
+
+  /** @internal */
+  constructor(inner: wasm.RevocationList) {
+    this._inner = inner;
+  }
+
+  /** Decode a previously-serialized revocation list from base64. */
+  static parse(token: string): RevocationList {
+    ensureReady();
+    try {
+      return new RevocationList(wasm.RevocationList.parse(token));
+    } catch (e) {
+      mapWasmError(e, "generic");
+    }
+  }
+
+  /** Encode this list as a URL-safe, unpadded base64 string. */
+  serialize(): string {
+    ensureReady();
+    try {
+      return this._inner.serialize();
+    } catch (e) {
+      mapWasmError(e, "generic");
+    }
+  }
+
+  /**
+   * Whether `identifier` appears in the revocation list. O(log n) —
+   * the underlying revoked vec is sorted.
+   */
+  contains(identifier: string): boolean {
+    ensureReady();
+    return this._inner.contains(identifier);
+  }
+
+  /** Number of revoked identifiers. */
+  get size(): number {
+    ensureReady();
+    return this._inner.size;
+  }
+
+  /** Whether the list has zero revocations. */
+  get isEmpty(): boolean {
+    ensureReady();
+    return this._inner.isEmpty;
+  }
+
+  /**
+   * Wall-clock the list was published, in milliseconds since the
+   * UNIX epoch. Verifiers may reject lists older than a configured
+   * staleness window; that policy lives at the caller.
+   */
+  get issuedAtMs(): number {
+    ensureReady();
+    return Number(this._inner.issuedAtMs);
+  }
+}
+
+/**
+ * Issuer-side helper for building and signing revocation lists.
+ * Holds the root key plus an in-memory set of revoked identifiers.
+ * Call `publish(issuedAtMs)` to mint a fresh signed snapshot.
+ *
+ * Usage:
+ *
+ *     const revoker = new Revoker(rootKey);
+ *     revoker.revoke("cap-id-of-stolen-token");
+ *     const list = revoker.publish(Date.now());
+ *     // ship `list.serialize()` to verifiers; they install via
+ *     // `verifier.withRevocationList(list)`.
+ */
+export class Revoker {
+  /** @internal */
+  readonly _inner: wasm.Revoker;
+
+  /** Construct a Revoker from the same root key the Issuer uses. */
+  constructor(rootKey: Uint8Array) {
+    ensureReady();
+    try {
+      this._inner = new wasm.Revoker(rootKey);
+    } catch (e) {
+      mapWasmError(e, "generic");
+    }
+  }
+
+  /** Mark a capability identifier as revoked. Idempotent. */
+  revoke(identifier: string): void {
+    ensureReady();
+    this._inner.revoke(identifier);
+  }
+
+  /**
+   * Remove an identifier from the revoked set. Returns true if the
+   * entry was present and removed. Use sparingly — "unrevoke" makes
+   * auditors nervous.
+   */
+  unrevoke(identifier: string): boolean {
+    ensureReady();
+    return this._inner.unrevoke(identifier);
+  }
+
+  /** Number of revoked identifiers currently held. */
+  get size(): number {
+    ensureReady();
+    return this._inner.size;
+  }
+
+  /** Whether the Revoker has any entries. */
+  get isEmpty(): boolean {
+    ensureReady();
+    return this._inner.isEmpty;
+  }
+
+  /**
+   * Snapshot the current revoked set into a signed RevocationList.
+   * Pass `issuedAtMs` from a clock authority you trust (NOT
+   * `Date.now()` from inside the verifier — the issuer's clock is
+   * the right authority for "when was this list published").
+   */
+  publish(issuedAtMs: number): RevocationList {
+    ensureReady();
+    if (!Number.isInteger(issuedAtMs) || issuedAtMs < 0) {
+      throw new CapabilityError(
+        `Revoker.publish: issuedAtMs must be a non-negative integer (got ${issuedAtMs})`,
+      );
+    }
+    try {
+      return new RevocationList(this._inner.publish(BigInt(issuedAtMs)));
+    } catch (e) {
+      mapWasmError(e, "generic");
+    }
+  }
+}
+
+/**
  * In-memory nonce store for replay protection on `verifyWithProof`.
  *
  * Construct once and pass to `Verifier.withNonceStore(...)`. The
@@ -372,6 +518,38 @@ export class Verifier {
     ensureReady();
     try {
       this._inner = this._inner.withNonceStore(store._inner);
+      return this;
+    } catch (e) {
+      mapWasmError(e, "chain");
+    }
+  }
+
+  /**
+   * Install a signed {@link RevocationList}. The list's HMAC
+   * signature is verified against the verifier's root key BEFORE
+   * the list is installed; mismatch throws `CapabilityChainError`
+   * with message `"invalid revocation-list signature"` and the
+   * list is NOT attached. This fail-closed behavior is deliberate:
+   * a tampered or wrong-key list fails LOUDLY at install time
+   * instead of silently producing a verifier that has no protection.
+   *
+   * Once installed, every subsequent `verifyWithContext` /
+   * `verifyWithProof` call denies any capability whose identifier
+   * is in the list — denial reason
+   * `"capability revoked: <identifier>"`, audit-loggable like every
+   * other denial.
+   *
+   * Returns `this` so calls can be chained.
+   */
+  withRevocationList(list: RevocationList): this {
+    ensureReady();
+    try {
+      // WASM signature is `&mut self -> Result<(), JsError>` (not
+      // consuming) so a signature-mismatch throw leaves the handle
+      // valid for retry — different from withNonceStore / withNonceTtlMs
+      // which can never fail and use the consuming pattern. We layer
+      // `return this` here to keep the JS API uniformly chainable.
+      this._inner.withRevocationList(list._inner);
       return this;
     } catch (e) {
       mapWasmError(e, "chain");
