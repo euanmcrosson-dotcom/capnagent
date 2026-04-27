@@ -98,6 +98,11 @@ examples/
                          malformed-URL tricks denied because caveats
                          compare against URL.origin, not the raw
                          string. No real network — localhost stub.
+  mcp-shell-agent/       Capability-bounded shell agent. Allowlists a
+                         specific argv shape; denies arbitrary
+                         command exec. argv-as-array shape forces
+                         token boundaries — shell-injection chaining
+                         can't smuggle past the gate.
 
 docs/
   DESIGN.md              Threat model, security argument (3 legs), error
@@ -110,19 +115,16 @@ docs/
   blog/v0-show-hn.md     This post.
 ```
 
-CI runs **319 tests** on every push (8 Rust integration targets, WASM smoke, TS unit, scripted demo, hok deterministic). 3 additional opt-in live-API tests run locally with `ANTHROPIC_API_KEY` set.
+CI runs **220+ Rust tests + 111 TS tests** on every push (10 Rust integration targets including 8 boolean-DSL property tests + 3 receipt-version tests, WASM smoke, TS unit, scripted demos, hok deterministic). 3 additional opt-in live-API tests run locally with `ANTHROPIC_API_KEY` set; 3 more opt-in MCP-server tests run with `CAPNAGENT_MCP_LIVE=1`.
 
 ## Status
 
-This is **v0 + most of v0.1**. v0 (weeks 1–6) is fully shipped: core + DSL + audit + WASM + TS + MCP + demos + revocation + GIF in the README. v0.1 ships:
+**v0, v0.1, and v0.2 are all shipped.** Backlog is empty.
 
-- DPoP-style holder-of-key (ed25519, `verify_with_proof` entry point)
-- TS / WASM wire-up of holder-of-key — usable from JS
-- Decimal numbers in the caveat DSL
-- Boolean composition in the DSL (`OR` / `AND` / parens)
-- Replay protection (`NonceStore` trait + in-memory TTL impl)
-
-What's left: receipt schema versioning (cosmetic future-proofing). Deferred to v0.2. The `NonceStore` TS surface — last v0.1 item — landed in `@capnagent/core` (`new NonceStore()`, `verifier.withNonceStore(store)`, `verifier.withNonceTtlMs(ttl)`) with 8 tests against the real WASM artifact.
+- **v0** (weeks 1–6): core + DSL + audit + WASM + TS + MCP + demos + revocation + GIF in the README.
+- **v0.1**: DPoP-style holder-of-key (ed25519, `verify_with_proof` entry point), TS/WASM holder-of-key (`new NonceStore()`, `verifier.withNonceStore(...)`, `verifier.withNonceTtlMs(...)`), decimal numbers in the caveat DSL, boolean composition (`OR`/`AND`/parens) with 8 property tests on the algebraic laws, replay protection (`NonceStore` trait + in-memory TTL impl, reachable from JS).
+- **v0.2**: Receipt schema versioning. `Receipt` carries a `version: u8` field; the auditor's HMAC input is `b"v" || [version_byte] || canonical_json(...)` so version-rewriting is signature-detectable; verifier returns a dedicated `AuditError::UnsupportedVersion` for forward-compat fail-closed behavior.
+- Plus a **criterion benchmark suite** for the verify pipeline. Per-call latency: 1.4 µs chain-only, 11 µs full bearer, 56 µs full hok, 170 µs hok+replay. ~17 kHz of 5-gate verifications per core.
 
 I'd love feedback, especially on:
 
@@ -169,13 +171,17 @@ key proof of possession (ed25519), replay protection (nonce store),
 revocation, and caveat evaluation against a verifier-controlled
 context. Caveats compose with OR / AND / parens, including decimals
 and timestamps. Out-of-scope calls are refused before the underlying
-tool surface sees them; every decision is signed into an audit
-receipt. The 48-second GIF in the README shows a real Claude Opus 4.7
-agent's wire-transfer attempt being denied on capability-scope
-grounds while a legitimate cable purchase proceeds. v0 + most of v0.1
-are shipped; 319 tests in CI. Looking for feedback on the threat
-model and on what production deployments need from the replay-store
-backend. Built solo over a few weeks.
+tool surface sees them; every decision is signed into a versioned
+audit receipt. The GIF in the README shows a real Claude Opus 4.7
+agent's wire-transfer attempt denied on capability-scope grounds
+while a legitimate cable purchase proceeds. Three real-world
+consumers ship in the repo (filesystem, HTTP, shell — all
+deterministic, no LLM required), plus a verified integration test
+against the official @modelcontextprotocol/server-filesystem.
+v0/v0.1/v0.2 all shipped, backlog empty. ~17 kHz 5-gate
+verifications/core (criterion bench in repo). 220+ Rust tests, 111
+TS tests in CI. Looking for feedback on the threat model and on what
+production deployments need from the replay-store backend.
 ```
 
 ### Why this should land

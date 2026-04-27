@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **examples/mcp-shell-agent — third real-world consumer.** New
+  workspace package `@capnagent-examples/mcp-shell-agent`. Closes
+  the high-risk-tool-surface trifecta (filesystem, HTTP, shell-exec).
+  Capability allowlists a specific argv shape — e.g. `git status`,
+  `git diff`, `git log` — and denies everything else, including
+  `git push`, `rm -rf /`, and `bash -c "..."`. argv-as-array shape
+  forces token boundaries, so shell-injection chaining
+  (`["git", "status; rm -rf /"]`) can't smuggle past the gate: the
+  capability sees one argv element with a non-allowlisted subcommand
+  and denies it. Context provider extracts `arg.cmd` (argv[0]) and
+  `arg.sub` (argv[1]) so caveats use plain `==` comparisons against
+  canonical structural fields. Issuance preconditions reject empty
+  cmd/subcommand lists and DSL-unsafe characters at issue time. 17
+  deterministic vitest tests with a stub shell client (no real
+  subprocesses); runnable demo via
+  `npm run -w @capnagent-examples/mcp-shell-agent demo`.
 - **v0.2 — receipt schema versioning.** `Receipt` gains a top-of-struct
   `version: u8` field (currently always `1`, exported as
   `capnagent_core::RECEIPT_SCHEMA_VERSION`). The field flows through

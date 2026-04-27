@@ -79,6 +79,13 @@ examples/
                          Defends against userinfo splitting, subdomain
                          confusion, and malformed URLs by parsing the
                          URL inside the verifier-controlled Context.
+  mcp-shell-agent/       Capability-bounded shell agent. Allowlists a
+                         specific argv shape (`git status` / `diff` /
+                         `log`); denies everything else — including
+                         `git push`, `rm -rf /`, and `bash -c`. argv-
+                         as-array shape forces token boundaries, so
+                         shell-injection chaining (`; rm -rf /`)
+                         can't slip past a substring gate.
 
 docs/
   DESIGN.md              Threat model, security argument, error model,
@@ -158,16 +165,22 @@ npm run -w @capnagent-examples/mcp-fs-agent demo
 
 # Origin-scoped HTTP agent (no API key, no real network)
 npm run -w @capnagent-examples/mcp-http-agent demo
+
+# Capability-bounded shell agent (no API key, no real subprocess)
+npm run -w @capnagent-examples/mcp-shell-agent demo
 ```
 
 The shopping-agent's four scenarios are documented in
 [`examples/shopping-agent/README.md`](examples/shopping-agent/README.md).
-Two non-LLM real-world consumers ship alongside it:
+Three non-LLM real-world consumers ship alongside it, covering the
+high-risk-tool-surface trifecta:
 
 - [`examples/mcp-fs-agent/README.md`](examples/mcp-fs-agent/README.md) —
   sandbox-scoped filesystem.
 - [`examples/mcp-http-agent/README.md`](examples/mcp-http-agent/README.md) —
   origin-scoped HTTP/fetch.
+- [`examples/mcp-shell-agent/README.md`](examples/mcp-shell-agent/README.md) —
+  capability-bounded shell exec.
 
 ## Performance
 
