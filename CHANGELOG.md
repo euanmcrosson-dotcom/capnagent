@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **tests: property-based tests for boolean DSL composition.** New
+  `crates/capnagent-core/tests/dsl_property_tests.rs` (8 properties,
+  256 cases each = 2048 generated inputs per run). Encodes the
+  boolean-algebra laws a reader of a caveat string assumes:
+  commutativity (OR, AND), associativity (OR, AND), distributivity
+  of AND over OR, allow-monotonicity (appending `OR X` can never
+  flip allow → deny), deny-monotonicity (appending `AND X` can
+  never flip deny → allow), and a no-panic invariant (any
+  parse-success AST evaluates without panicking, regardless of
+  context). Closes the security-argument gap noted in the v0.1
+  Show HN: previously we proptested chain integrity but not the DSL
+  evaluator. No bugs surfaced — all eight laws hold.
 - **bench: criterion harness for the verify pipeline.** New
   `crates/capnagent-core/benches/verify_pipeline.rs` measures per-call
   latency for all four verifier entry points: chain-only verify,
