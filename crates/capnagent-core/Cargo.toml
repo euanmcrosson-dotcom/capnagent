@@ -22,6 +22,16 @@ serde_json = "=1.0.140"
 base64 = "0.22"
 thiserror = "1"
 subtle = "2"
+# ed25519 for DPoP-style holder-of-key proofs. `default-features = false`
+# drops `rand_core` from the dep tree because we never generate keys
+# inside this crate — keys are produced by the holder and we only verify
+# signatures here.
+ed25519-dalek = { version = "2", default-features = false }
 
 [dev-dependencies]
 proptest = "1"
+# Tests need to generate ed25519 key pairs to exercise holder-of-key.
+# `rand_core` is the trait surface; `OsRng` lives in `rand`.
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+rand = "0.8"
+base64 = "0.22"

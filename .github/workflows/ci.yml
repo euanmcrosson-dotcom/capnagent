@@ -57,6 +57,8 @@ jobs:
         run: cargo test -p capnagent-core --test integration_tests
       - name: revocation tests
         run: cargo test -p capnagent-core --test revocation_tests
+      - name: holder-of-key tests
+        run: cargo test -p capnagent-core --test holder_of_key_tests
 
   audit:
     name: cargo audit (RustSec advisory DB)

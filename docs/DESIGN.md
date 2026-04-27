@@ -242,20 +242,7 @@ hot-patch. Listed here so they don't get lost.
   `\d+(\.\d+)?`, a precision policy (probably "compare as fixed-point
   cents internally"), and tests covering `12.99 vs 12.999` rounding
   edges. Discovered: 2026-04-27 during the LLM demo run.
-- **DPoP-style holder-of-key.** Bind a capability to a public key at
-  issuance time; require every use of the capability to carry a
-  signature over a per-call challenge made with the corresponding
-  private key. Defends against capability theft mid-flight when the
-  attacker doesn't have the private key (the typical case for stolen
-  bearer tokens). Originally scoped into week 5 of v0; deferred
-  because (a) revocation alone is sufficient for the most common
-  capability-theft scenario (server-side knows it's been stolen and
-  publishes the id), and (b) DPoP needs an ed25519/p256 dep + a
-  challenge-derivation policy + new wire-format fields. Plan for
-  v0.1: ed25519 via `ed25519-dalek`, challenge = SHA-256 of the
-  canonical-JSON of the (capability_id, tool, args, now) tuple,
-  optional `holder_of_key` field on `Capability`, new
-  `verify_with_context_and_proof` entry point.
+- ~~**DPoP-style holder-of-key.**~~ **Shipped in v0.1** — see §11.
 - **Caveat DSL: disjunctions.** Real-world capabilities often want
   `tool == "checkout.purchase" OR tool == "catalog.search"` — currently
   expressible only by issuing two capabilities. Workable for now (the
@@ -307,3 +294,66 @@ Out of scope:
 - Compact representations (Bloom filters, sparse merkle) — irrelevant
   at the scale capnagent is designed for.
 - Cross-issuer revocation federation — single-issuer is locked for v0.
+
+## 11. Holder-of-key surface (v0.1, shipped)
+
+Threat: capability theft mid-flight when the attacker has the bearer
+token but not the holder's private key. Revocation (§10) covers the
+case where the issuer learns of the compromise and can publish the id.
+Holder-of-key covers the case where they don't know yet — the verifier
+refuses any token use that can't produce a fresh proof of possession.
+
+Shipped surface:
+
+- `Capability::holder_of_key: Option<Vec<u8>>` — optional ed25519
+  public key bound at issuance. **Folded into the HMAC chain** via a
+  domain-separated step (`HMAC(prev_sig, "__hok:" || pubkey_bytes)`)
+  so the binding cannot be added, removed, or changed after issuance.
+  Tokens without the field (v0 tokens) take the v0 chain path —
+  backward-compat is preserved at the byte level.
+- `Issuer::issue(id).holder_of_key(&pubkey).caveat(...).build()` —
+  builder requires hok-first ordering (asserts at runtime).
+- `Verifier::verify_with_proof(cap, ctx, auditor, challenge, proof)` —
+  new entry point. Four legs: chain → proof → revocation → caveats.
+  Bad proofs become `Outcome::Denied` (audit-loggable), not errors.
+- `pop_challenge_for(cap, ctx)` — default challenge derivation:
+  `SHA-256(canonical-JSON({ id, tool, args_hash, now_ms }))`. Holders
+  use this on their side to compute what to sign; verifier uses the
+  same function on its side to compute what to compare against. Both
+  sides must agree bytewise — that's the whole point.
+- `Verifier::verify_with_context` denies hok-bound capabilities with
+  reason `"capability is bound to a holder key; use verify_with_proof"`.
+  Mixing the no-proof entry point with a hok-bound token is a
+  configuration mistake; we surface it as a denial rather than a
+  silent allow.
+
+Design choices:
+
+- **ed25519 over ECDSA-P256.** Smaller signatures (64B vs 71-72B), no
+  malleability, faster verify, no nonce-derivation footguns. The
+  RustCrypto `ed25519-dalek` 2.x is well-trusted.
+- **Public key in the chain, not as a caveat.** A caveat could carry
+  it (`__hok == "<base64>"`), but folding it into the chain
+  construction directly is cleaner — the binding is structural, not a
+  predicate. The `__hok:` prefix in the HMAC step domain-separates it
+  from regular caveats so collisions are impossible by construction.
+- **Caller-supplied challenge bytes.** `verify_with_proof` takes
+  challenge bytes opaquely so deployments can layer in nonces, request
+  hashes, server-side antireplay state, etc. `pop_challenge_for` is
+  the documented default — it covers the typical case (request-shape
+  binding) and is bytewise-deterministic across processes.
+- **Bad proof = Denied, not Err.** Same rationale as revocation: the
+  audit log captures every attempt. An attacker with a stolen token
+  who can't sign produces a denial receipt with reason
+  `"holder-of-key proof failed"` — exactly what an incident-response
+  team needs to know about.
+
+Out of scope for v0.1:
+
+- Key rotation. Today, rotating the holder key requires reissuing
+  the capability. v1 design might allow multi-key bindings.
+- Revocation by holder key (vs by capability id). Today the issuer
+  revokes by id; future versions might revoke all capabilities bound
+  to a compromised key in one entry.
+- Hardware-backed signing (TPM, secure enclave). Out of scope for the
+  core; integrators are free to plug in any `Signer` implementation.

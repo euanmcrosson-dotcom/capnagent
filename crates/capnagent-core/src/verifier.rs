@@ -13,12 +13,13 @@
 //!   that "should not happen during normal operation" (chain forgery, audit
 //!   I/O failure) flow through [`VerifyError`].
 
+use ed25519_dalek::{Signature, Verifier as Ed25519Verifier, VerifyingKey};
 use hmac::{Hmac, Mac};
 use sha2::Sha256;
 use subtle::ConstantTimeEq;
 
 use crate::audit::{AuditError, Auditor, Outcome, Receipt};
-use crate::capability::{chain_caveat, Capability, Caveat};
+use crate::capability::{chain_caveat, chain_holder_of_key, Capability, Caveat};
 use crate::caveat_dsl;
 use crate::context::Context;
 use crate::revocation::{RevocationError, RevocationList};
@@ -85,12 +86,20 @@ impl Verifier {
     }
 
     /// Recompute the HMAC chain for `cap` and compare against its signature
-    /// in constant time.
+    /// in constant time. Honours `holder_of_key` if present — the chain
+    /// folds in the holder-of-key bytes after the identifier and before
+    /// any caveats, so altering or removing the binding invalidates the
+    /// signature.
     pub fn verify<'a>(&self, cap: &'a Capability) -> Result<Verified<'a>> {
         let mut mac = <Hmac<Sha256> as Mac>::new_from_slice(&self.root_key)
             .expect("HMAC accepts keys of any length");
         mac.update(cap.identifier.as_bytes());
         let mut sig = mac.finalize().into_bytes().to_vec();
+
+        if let Some(hok) = &cap.holder_of_key {
+            sig = chain_holder_of_key(&sig, hok);
+        }
+
         for caveat in &cap.caveats {
             sig = chain_caveat(&sig, caveat);
         }
@@ -139,6 +148,21 @@ impl Verifier {
         // capability and decided X".
         self.verify(cap)?;
 
+        // hok-bound tokens MUST go through verify_with_proof. Calling
+        // verify_with_context with a hok-bound token is fail-closed —
+        // the verifier has no proof to check, so it denies. The denial
+        // is recorded as an outcome (not an error) so the attempt is
+        // visible in the audit log.
+        if cap.holder_of_key.is_some() {
+            return Ok(auditor.sign(
+                cap,
+                ctx,
+                Outcome::Denied {
+                    reason: "capability is bound to a holder key; use verify_with_proof".into(),
+                },
+            ));
+        }
+
         // Leg 2 — revocation. Cryptographically intact tokens may still
         // be denied here if the issuer has explicitly revoked them.
         // Revocation is recorded as an Outcome::Denied (not an Err) so
@@ -155,13 +179,129 @@ impl Verifier {
             },
         };
 
-        // Leg 3 — sign. Audit signing is infallible at the type level
+        // Leg 4 — sign. Audit signing is infallible at the type level
         // (HMAC over canonical JSON), but the canonical-JSON encoding can
         // surface a `serde_json::Error` if a Receipt field were ever
         // non-serializable. That can't happen with the current Receipt
         // shape, so this is defensive.
         Ok(auditor.sign(cap, ctx, outcome))
     }
+
+    /// Like [`Verifier::verify_with_context`], but requires a DPoP-style
+    /// proof of possession. Required for capabilities issued with
+    /// [`crate::CapabilityBuilder::holder_of_key`].
+    ///
+    /// `challenge` is the bytes the holder signed (typically a hash of
+    /// the request — see [`pop_challenge_for`] for a default policy).
+    /// `proof` is the raw 64-byte ed25519 signature.
+    ///
+    /// On a hok-bound capability:
+    ///   - **No `holder_of_key`** on the cap → `Outcome::Denied`. Mixing
+    ///     proof-required and proof-not-required call sites is a
+    ///     configuration mistake; we surface it as a denial rather than
+    ///     silently allowing.
+    ///   - **Bad signature, wrong key, or malformed `proof`** →
+    ///     `Outcome::Denied` with reason `"holder-of-key proof failed"`.
+    ///   - **Valid proof** → falls through to the same revocation +
+    ///     caveat-evaluation pipeline as `verify_with_context`.
+    ///
+    /// In every case the receipt is signed and returned, so the audit
+    /// log captures the attempt. Errors are reserved for chain forgery
+    /// and audit-pipeline failures, same as `verify_with_context`.
+    pub fn verify_with_proof(
+        &self,
+        cap: &Capability,
+        ctx: &Context,
+        auditor: &Auditor,
+        challenge: &[u8],
+        proof: &[u8],
+    ) -> std::result::Result<Receipt, VerifyError> {
+        // Leg 1 — chain integrity (includes hok in the chain).
+        self.verify(cap)?;
+
+        // Leg 2 — proof of possession.
+        if let Err(reason) = check_proof(cap, challenge, proof) {
+            return Ok(auditor.sign(cap, ctx, Outcome::Denied { reason }));
+        }
+
+        // Leg 3 — revocation.
+        let outcome = match check_revocation(cap, self.revocation_list.as_ref()) {
+            Err(reason) => Outcome::Denied { reason },
+            // Leg 4 — caveats.
+            Ok(()) => match evaluate_all(&cap.caveats, ctx) {
+                Ok(()) => Outcome::Allowed,
+                Err(reason) => Outcome::Denied { reason },
+            },
+        };
+
+        Ok(auditor.sign(cap, ctx, outcome))
+    }
+}
+
+/// Default proof-of-possession challenge for a given context. Returns
+/// `SHA-256(canonical-JSON({ id, tool, args_hash, now_ms }))`. Use this
+/// on the holder side to compute the bytes to sign, and on the verifier
+/// side to compute the bytes to compare against. Both sides must agree
+/// on this exact derivation — bytewise — for the proof to verify.
+///
+/// Callers free to pass their own challenge bytes to
+/// [`Verifier::verify_with_proof`] if they want a different policy
+/// (e.g. include a server-side nonce). The function is a default, not
+/// a requirement.
+#[must_use]
+pub fn pop_challenge_for(cap: &Capability, ctx: &Context) -> Vec<u8> {
+    use sha2::Digest;
+    let now_ms = ctx
+        .now
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0);
+    // Match the audit module's args_hash policy so callers don't have
+    // to know about the canonical-JSON details.
+    let args_hash = ctx.args_hash();
+    let payload = serde_json::json!({
+        "id": cap.identifier,
+        "tool": ctx.tool,
+        "args_hash": args_hash,
+        "now_ms": now_ms,
+    });
+    let bytes = serde_json::to_vec(&payload).expect("payload always serializable");
+    let mut hasher = sha2::Sha256::new();
+    hasher.update(&bytes);
+    hasher.finalize().to_vec()
+}
+
+fn check_proof(
+    cap: &Capability,
+    challenge: &[u8],
+    proof: &[u8],
+) -> std::result::Result<(), String> {
+    let hok = cap
+        .holder_of_key
+        .as_ref()
+        .ok_or_else(|| "capability is not hok-bound; do not use verify_with_proof".to_string())?;
+
+    let pubkey_bytes: [u8; 32] = hok.as_slice().try_into().map_err(|_| {
+        format!(
+            "malformed holder-of-key public key (expected 32 bytes, got {})",
+            hok.len()
+        )
+    })?;
+
+    let pubkey = VerifyingKey::from_bytes(&pubkey_bytes)
+        .map_err(|_| "invalid ed25519 public key in capability".to_string())?;
+
+    let proof_bytes: [u8; 64] = proof.try_into().map_err(|_| {
+        format!(
+            "malformed proof signature (expected 64 bytes, got {})",
+            proof.len()
+        )
+    })?;
+    let signature = Signature::from_bytes(&proof_bytes);
+
+    pubkey
+        .verify(challenge, &signature)
+        .map_err(|_| "holder-of-key proof failed".to_string())
 }
 
 /// Returns `Err(reason)` if `list` is `Some` and contains `cap.identifier`,

@@ -25,20 +25,22 @@ capnagent denied the wire on capability-scope grounds —
 the user's direct request exceeded what the issued capability permits.
 ```
 
-## Status: v0 (weeks 1–5 shipped)
+## Status: v0 shipped, v0.1 in progress
 
-| Week | Deliverable | Status |
+| Phase | Deliverable | Status |
 |---:|---|:---:|
-| 1 | Macaroon core in Rust: issue, attenuate, verify. 9 proptest cases proving the cannot-broaden invariant. | ✅ |
-| 2 | Caveat DSL parser + evaluator. Verifier-controlled `Context`. Audit-log signer. 99 tests across 4 targets. | ✅ |
-| 3 | WASM bindings + `@capnagent/core` (TS) + `@capnagent/mcp` adapter. 55 vitest cases. | ✅ |
-| 4 | Shopping-agent demo (scripted + LLM-driven via Anthropic SDK). 7 scenarios across deterministic + live API. | ✅ |
-| 5 | Signed revocation list + integrated 3-gate verify pipeline. 18 tests. DPoP holder-of-key deferred to v0.1. | ✅ |
-| 6 | Public release. | in progress |
+| v0 wk 1 | Macaroon core in Rust: issue, attenuate, verify. 9 proptest cases proving the cannot-broaden invariant. | ✅ |
+| v0 wk 2 | Caveat DSL parser + evaluator. Verifier-controlled `Context`. Audit-log signer. 99 tests across 4 targets. | ✅ |
+| v0 wk 3 | WASM bindings + `@capnagent/core` (TS) + `@capnagent/mcp` adapter. 55 vitest cases. | ✅ |
+| v0 wk 4 | Shopping-agent demo (scripted + LLM-driven via Anthropic SDK). 7 scenarios across deterministic + live API. | ✅ |
+| v0 wk 5 | Signed revocation list + integrated 3-gate verify pipeline. 18 tests. | ✅ |
+| v0 wk 6 | Public release: README, threat model, demo video, blog post. | ✅ |
+| v0.1 | DPoP-style holder-of-key (ed25519 binding, `verify_with_proof` entry point, 4-gate pipeline). 17 tests. | ✅ |
+| v0.1 | Decimal numbers in caveat DSL, disjunctions, replay protection, receipt schema versioning. | next |
 
-CI runs **196 tests** on every push (Rust property + integration +
-revocation, WASM smoke, TS unit, scripted demo); 3 additional opt-in
-live-API tests run locally with `ANTHROPIC_API_KEY` set.
+CI runs **214 tests** on every push (7 Rust integration targets, WASM
+smoke, TS unit, scripted demo); 3 additional opt-in live-API tests run
+locally with `ANTHROPIC_API_KEY` set.
 
 ## What's in the repo
 

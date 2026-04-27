@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **v0.1 — DPoP-style holder-of-key.** New optional `holder_of_key`
+  field on `Capability` (ed25519 public key bytes) is folded into the
+  HMAC chain via a domain-separated step (`HMAC(prev_sig, "__hok:" ||
+  pubkey)`), so the binding cannot be added, removed, or changed
+  after issuance without invalidating the signature. New issuer
+  builder method `holder_of_key(&pubkey)` (must precede `caveat`).
+  New verifier entry point `verify_with_proof(cap, ctx, auditor,
+  challenge, proof)` runs four gates: chain → proof → revocation →
+  caveats. New `pop_challenge_for(cap, ctx)` helper provides the
+  default challenge derivation (`SHA-256` over canonical-JSON of
+  `{ id, tool, args_hash, now_ms }`). `verify_with_context` now
+  fail-closes on hok-bound capabilities (Denied receipt with reason
+  pointing to `verify_with_proof`). Backward-compat preserved at the
+  byte level: v0 tokens (no hok) take the v0 chain path.
+  17 new tests covering chain integration, backward-compat, valid /
+  wrong-key / wrong-challenge / malformed proof paths,
+  configuration-mistake detection, and audit-log invariants.
+  ed25519-dalek 2.x added as a core dep.
 - **Week 5 — signed revocation list.** New `revocation` module exposes
   `RevocationList` (HMAC-signed wire format), `Revoker` (issuer-side
   helper), and `RevocationError`. `Verifier::with_revocation_list(list)`

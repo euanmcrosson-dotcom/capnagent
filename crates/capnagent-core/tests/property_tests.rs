@@ -154,6 +154,7 @@ proptest! {
 
         let forged = Capability {
             identifier: id,
+            holder_of_key: None,
             caveats: caveats.into_iter().map(Caveat::new).collect(),
             signature: forged_sig,
         };
