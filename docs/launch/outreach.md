@@ -133,6 +133,66 @@ add as round NN" feedback.
   / "capability security" — the people quoting Lampson 1974 in 2026
   are your audience.
 
+## First-5 shortlist — a 90-minute workflow
+
+The single most expensive mistake at this stage is "research five
+perfect targets" turning into "research forever, send zero DMs."
+Time-box the shortlisting so the DMs actually go out.
+
+### Step 1 (20 min) — five archetypes, one target each
+
+Pick ONE concrete person per slot. Don't optimize. The criterion is
+"plausibly cares about agent tool-call security" + "reachable in
+≤2 clicks." Open a scratch doc and fill these in:
+
+| # | Archetype                                  | Search prompt                                               | Pick      |
+|---|--------------------------------------------|-------------------------------------------------------------|-----------|
+| 1 | **MCP-server maintainer** (active OSS)      | github.com search: `mcp` topic, sort by recently updated, ≥50 stars | name + repo |
+| 2 | **Coding-agent product** founder/eng-lead   | LinkedIn: `coding agent` OR `AI engineer` + "founder" / "head of eng" + company size ≤50 | name + LinkedIn URL |
+| 3 | **AI customer-support / refund-action** team | Twitter/X: `agent` + (`refund` OR `cancel` OR `account action`) recent | name + handle |
+| 4 | **Agent-security researcher** (academic or industry) | Google Scholar / X: `prompt injection` + `tool use` 2025–2026 | name + paper or post |
+| 5 | **Browser-automation agent** founder         | Hacker News Show HN archive + GitHub: `browser agent` recent | name + repo / post |
+
+The five together cover the surface area: maintainer, product
+builder, customer-action operator, researcher, browser-automation.
+A reply from any one of them is a successful first wave.
+
+### Step 2 (40 min) — per-target one-line context
+
+Open each target's most-recent public post (commit / blog / tweet).
+Write ONE concrete sentence about it. This sentence goes into the
+`[SPECIFIC THING about their product]` slot in the DM. No sentence,
+no DM — generic openers get deleted.
+
+  > "Saw you shipped streaming-tool-call support last week — caught the
+  >  edge case where Anthropic's tool_use blocks fragment across SSE chunks."
+
+If you can't write that sentence in 60 seconds, the target is not
+warm enough; skip and pick another from the same archetype row.
+
+### Step 3 (30 min) — five DMs out
+
+Use Template 1 (founder/eng-lead) for slots 2/3/5. Template 2
+(security engineer) for slot 4. Template 3 (MCP-server maintainer)
+for slot 1. Send. Don't tweak the body beyond:
+
+- the `[SPECIFIC THING]` opener (from Step 2)
+- the closing question (their most-feared tool call, the round NN
+  you'd add against their stack, what they'd want to see in a
+  receipt schema, etc.)
+
+### Step 4 (after sending) — wait, don't poll
+
+Track responses in a plain text file: `docs/launch/dm-log.txt` is
+fine. Two out of five replies is a good rate. Most won't. The point
+of wave one is calibration — the *questions* you get back tell you
+what's missing from the README / DESIGN / THREAT_MODEL more
+reliably than another self-review.
+
+If wave one returns zero replies after 7 days, the bottleneck is
+positioning, not effort — revisit the elevator pitch, not the DM
+volume.
+
 ## Cadence
 
 - Send 5 DMs/week. More than that and the response rate craters
