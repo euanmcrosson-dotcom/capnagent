@@ -1,0 +1,34 @@
+{
+  "_annotation": {
+    "scenario": "Silent-bypass on revocation-list install. Operator caught CapabilityChainError from withRevocationList(badList) and ignored it. The verifier has no list installed but the operator believes one is. verifyWithContext on the supposedly-revoked cap returns ALLOWED.",
+    "expected_outcome": "denied",
+    "observed_outcome": "allowed",
+    "install_error_caught": "invalid revocation-list signature",
+    "finding": "Defense BREAKS for the operator-error path. See docs/purple-team/06-silent-bypass-revocation-install.md."
+  },
+  "receipt": {
+    "version": 1,
+    "capabilityIdentifier": "buy-stolen-token",
+    "caveats": [
+      {
+        "predicate": "caller == \"agent:test\""
+      },
+      {
+        "predicate": "tool == \"x\""
+      },
+      {
+        "predicate": "now <= @2099-01-01T00:00:00Z"
+      }
+    ],
+    "contextSummary": {
+      "caller": "agent:test",
+      "tool": "x",
+      "argsHash": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+    },
+    "outcome": {
+      "kind": "allowed"
+    },
+    "timestampMs": 1700000000000,
+    "signature": "19e9865add351f90a5bfa6cbd0efdb070a2c451f158bd0ab9634d1362627a645"
+  }
+}

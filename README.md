@@ -36,6 +36,7 @@ receipt evidence per round.
 | 03 | Capability broadening (hostile-holder tampering) | CWE-345              | holds-with-caveat | [`capability-broadening.purple.test.ts`](packages/capnagent/src/__tests__/capability-broadening.purple.test.ts) — 12/12 pass |
 | 04 | Revocation race (revoked-capability replay)    | OWASP A01, CWE-672   | holds-with-caveat | [`round_04_revocation_race.purple.rs`](crates/capnagent-core/tests/round_04_revocation_race.purple.rs) — 11/11 pass (Rust) |
 | 05 | Cross-origin exfil via http-agent              | OWASP LLM01, CWE-441 | holds-with-caveat | [`cross-origin-exfil.purple.test.ts`](examples/mcp-http-agent/src/__tests__/cross-origin-exfil.purple.test.ts) — 11/11 pass |
+| 06 | Silent-bypass on revocation-list install       | OWASP A04, CWE-693   | **BREAKS** (operator trap; engine v0.4 fix queued) | [`silent-bypass-revocation.purple.test.ts`](packages/capnagent/src/__tests__/silent-bypass-revocation.purple.test.ts) — 5/5 pass |
 
 Each round produces:
 
