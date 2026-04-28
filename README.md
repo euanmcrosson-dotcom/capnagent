@@ -37,10 +37,10 @@ receipt evidence per round.
 | 04 | Revocation race (revoked-capability replay)    | OWASP A01, CWE-672   | holds-with-caveat | [`round_04_revocation_race.purple.rs`](crates/capnagent-core/tests/round_04_revocation_race.purple.rs) — 11/11 pass (Rust) |
 | 05 | Cross-origin exfil via http-agent              | OWASP LLM01, CWE-441 | holds-with-caveat | [`cross-origin-exfil.purple.test.ts`](examples/mcp-http-agent/src/__tests__/cross-origin-exfil.purple.test.ts) — 11/11 pass |
 | 06 | Silent-bypass on revocation-list install       | OWASP A04, CWE-693   | Run 1: BREAKS → Run 2: CLOSED (v0.4 introspection methods shipped) | [`silent-bypass-revocation.purple.test.ts`](packages/capnagent/src/__tests__/silent-bypass-revocation.purple.test.ts) — 7/7 pass |
-| 07 | fs-sandbox prefix foot-gun                     | OWASP A04, CWE-22    | **BREAKS** (substring `matches` not path-aware; fix queued) | [`sandbox-prefix-footgun.purple.test.ts`](examples/mcp-fs-agent/src/__tests__/sandbox-prefix-footgun.purple.test.ts) — 9/9 pass |
+| 07 | fs-sandbox prefix foot-gun                     | OWASP A04, CWE-22    | BREAKS → **CLOSED** (v0.5 `starts_with` operator + path canonicalization in Context provider) | [`sandbox-prefix-footgun.purple.test.ts`](examples/mcp-fs-agent/src/__tests__/sandbox-prefix-footgun.purple.test.ts) |
 | 08 | Forgot NonceStore on hok-bound caps            | OWASP A04, A07       | CLOSED (v0.4 `hasNonceStore()` enables detection) | [`forgot-nonce-store.purple.test.ts`](packages/capnagent/src/__tests__/forgot-nonce-store.purple.test.ts) — 6/6 pass |
-| 09 | IDN homograph in origin allowlist              | CWE-1007, OWASP A04  | **BREAKS** (`isExactOrigin` accepts punycode silently; TR39 fix queued) | [`idn-homograph-origin.purple.test.ts`](examples/mcp-http-agent/src/__tests__/idn-homograph-origin.purple.test.ts) — 13/13 pass |
-| 10 | Encoding / path-traversal against fs-sandbox   | OWASP A04, CWE-22    | **BREAKS** (substring caveat allows `/sandbox/../outside/secret`; v0.5 fix queued — same as round 07) | [`encoding-attacks.purple.test.ts`](examples/mcp-fs-agent/src/__tests__/encoding-attacks.purple.test.ts) — 8/8 pass |
+| 09 | IDN homograph in origin allowlist              | CWE-1007, OWASP A04  | BREAKS → **CLOSED** (v0.5 `exactOriginRejectionReason` rejects `xn--` labels + non-ASCII) | [`idn-homograph-origin.purple.test.ts`](examples/mcp-http-agent/src/__tests__/idn-homograph-origin.purple.test.ts) |
+| 10 | Encoding / path-traversal against fs-sandbox   | OWASP A04, CWE-22    | BREAKS → **CLOSED** (v0.5 `decodeURIComponent` + `path.resolve` in Context provider; collapses `..` and percent-encoding before caveat check) | [`encoding-attacks.purple.test.ts`](examples/mcp-fs-agent/src/__tests__/encoding-attacks.purple.test.ts) |
 
 See [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) for the canonical
 in-scope / out-of-scope table covering every closed round plus the
@@ -60,23 +60,46 @@ example package, and verify every claim in the corpus without
 trusting any prose. The purple-team `README.md` documents the
 methodology and the `_template.md` shape every round follows.
 
-## Status: v0 + v0.1 + v0.2 shipped, corpus building
+## Status: v0.5 shipped — 10 rounds closed, every BREAKS resolved
 
-The engine: 220+ Rust tests (10 integration targets, including
+The engine: 242 Rust tests (10 integration targets, including
 proptests on the macaroon no-broaden invariant and the boolean DSL
-composition laws), 136 TypeScript tests across 5 workspace packages.
+composition laws, plus 5 new `starts_with` tests in v0.5), 322
+TypeScript tests across 6 workspace packages. All green.
 Per-call verifier latency: 1.4 µs chain-only, 11 µs full bearer
 pipeline, 56 µs full hok pipeline, 170 µs hok+replay. ~17 kHz 5-gate
 verifications per core (criterion bench in repo).
 
-The corpus: rounds 01–05 closed, all holds-with-caveat. Five named
-attack scenarios (cross-server confused deputy, hok-replay,
-capability broadening, revocation race, cross-origin exfil) each
-backed by a runnable PoC and a captured denial receipt. Across the
-corpus, every gate of the 5-gate pipeline has been exercised by at
-least one round — chain (rounds 01/02/03/04/05), proof (02), replay
-(02), revocation (04), caveat (01/05) — so no column is empty.
-Round 06 (allowlist bypass against shell-agent) is queued.
+The corpus: rounds 01–10 closed. 6 hold-with-caveat
+(01/02/03/04/05/08); the 4 documented BREAKS have all been fixed
+and shipped — round 06 in v0.4 (Verifier introspection methods),
+rounds 07/09/10 in v0.5 (`starts_with` DSL operator,
+`exactOriginRejectionReason` with TR39 punycode rejection, and
+fs-agent path canonicalization with `decodeURIComponent` +
+`path.resolve`). Across the corpus, every gate of the 5-gate
+pipeline has been exercised by at least one round.
+
+**Angles run** — parallel-agent self-review of the engine itself:
+4 agents, 36 angles, 17 findings, **including 4 HIGH severity
+defects in our own code.** v0.5 closes 3 of 4:
+
+- **B.2** — `cap.attenuate("")` produced a silent permanent-deny
+  brick token. CLOSED: WASM `attenuate` and `caveat` pre-validate
+  the predicate against the DSL parser at call time.
+- **B.3** — `Auditor` accepted a zero-byte HMAC key (deployment
+  trap if audit key derived from an unset env var). CLOSED:
+  `MIN_AUDIT_KEY_LEN = 16` enforced at construction; sub-16-byte
+  keys panic in Rust core, throw a clean JsError in WASM.
+- **C.5** — `Issuer.issue("x").build()` with no caveats was a
+  god-mode token. CLOSED: WASM `build()` throws if caveat list is
+  empty.
+- **A.1** — sub-ulp f64 numeric coercion (`50.000000000000001`
+  collapses to `50.0`, satisfies `arg.amount <= 50`). PARKED under
+  design discussion — integer-only mode for monetary caveats is the
+  likely fix; not in v0.5 because it's an API-shape decision worth
+  taking time on.
+
+See [`CHANGELOG.md`](CHANGELOG.md) for the full finding list.
 
 ## What's in the repo
 
@@ -186,8 +209,8 @@ npm run build:wasm                       # produces crates/capnagent-wasm/pkg/
 npm run -w @capnagent/core build         # produces packages/capnagent/dist/
 
 # Tests (no API key required)
-cargo test
-npm test --workspaces --if-present       # 55 TS + 22 WASM-smoke + 3 scripted demo
+cargo test                               # 242 Rust tests across 10 integration targets
+npm test --workspaces --if-present       # 322 TS tests across 6 packages
 
 # Live LLM demo (requires ANTHROPIC_API_KEY)
 export ANTHROPIC_API_KEY=sk-ant-...
