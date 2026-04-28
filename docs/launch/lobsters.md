@@ -46,15 +46,16 @@ code:
   B.3  Auditor accepts a zero-byte HMAC key
   C.5  Empty-caveat capability = god-mode authorization
 
-v0.5 closes all four in one batch. The point of the corpus is
-that defects this severe are findable and fixable in a public
-loop — not after a CVE.
+v0.5 SHIPPED and closes 3 of 4 (A.1 sub-ulp f64 is parked under
+design discussion — integer-only mode for monetary caveats is the
+likely fix). The point of the corpus is that defects this severe
+are findable and fixable in a public loop — not after a CVE.
 
 Engine: macaroon-style HMAC chain, ed25519 holder-of-key (DPoP),
 NonceStore replay protection, signed revocation list, caveat DSL
 with OR/AND/parens. WASM/TS bindings; MCP adapter verified
 live against @modelcontextprotocol/server-filesystem. unsafe_code =
-forbid, ~17 kHz 5-gate verifications/core. 230+ Rust tests, ~318 TS
+forbid, ~17 kHz 5-gate verifications/core. 242 Rust tests, 322 TS
 tests, criterion benches. Looking for adversarial review of the
 methodology and the angles findings.
 ```

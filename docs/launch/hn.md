@@ -41,10 +41,15 @@ defects:
        with no caveats authorizes every context.
 
 These are real engineering defects, found and triaged before launch
-rather than after. v0.5 closes all four in one batch (fixes are
-queued; ETA this week). The corpus is the artifact; the library is
-the engine; the methodology — falsifiable claim → adversarial PoC →
-signed receipt — is what makes the corpus auditable.
+rather than after. v0.5 SHIPPED today and closes 3 of the 4 — B.2,
+B.3, C.5 — plus rounds 07, 09, 10 flipping from BREAKS to CLOSED
+in the same batch. A.1 (sub-ulp f64) is the trickier one: real
+fix is integer-only mode for monetary caveats, which is a small
+DSL change but affects the public API; under design discussion
+rather than rushed into the same batch. The corpus is the artifact;
+the library is the engine; the methodology — falsifiable claim →
+adversarial PoC → signed receipt → fix or document — is what makes
+the corpus auditable.
 
 Engine: macaroon-style HMAC chain, ed25519 holder-of-key (DPoP-
 shape), NonceStore replay protection, signed revocation list, caveat
@@ -53,7 +58,7 @@ verified against @modelcontextprotocol/server-filesystem live. 1.4 µs
 chain-only verify, 56 µs hok, 170 µs hok+replay. ~17 kHz 5-gate
 verifications/core. unsafe_code = forbid.
 
-230+ Rust tests, ~318 TS tests, criterion benches in CI. Looking
+242 Rust tests, 322 TS tests, criterion benches in CI. Looking
 for adversarial review of the threat model + the angles
 methodology. If you can break round NN or design round 11, that's
 the conversation I'm here for.

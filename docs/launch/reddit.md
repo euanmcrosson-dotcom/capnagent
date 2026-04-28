@@ -66,12 +66,13 @@ ed25519-dalek dominates the hok paths (~45 µs). Sustains ~17 kHz
 
   https://github.com/euanmcrosson-dotcom/capnagent
 
-230+ Rust tests (proptests for the macaroon no-broaden invariant
-and 8 boolean-algebra laws on the caveat DSL) + ~318 TS tests
+242 Rust tests (proptests for the macaroon no-broaden invariant
+and 8 boolean-algebra laws on the caveat DSL) + 322 TS tests
 including a parallel-agent "angles" run that surfaced 17 findings
 in our own engine — 4 HIGH severity (sub-ulp f64 caveat-bypass,
 empty-attenuation brick, zero-byte audit key accepted, empty-caveat
-god-mode token). v0.5 closes all four. Apache-2.0.
+god-mode token). v0.5 SHIPPED and closes 3 of 4 (sub-ulp f64
+remains under design discussion). Apache-2.0.
 ```
 
 ## /r/MachineLearning

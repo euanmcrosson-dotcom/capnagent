@@ -73,7 +73,8 @@ Then we ran 4 parallel agents adversarially against our own engine:
 36 angles, 17 findings, 4 HIGH severity defects in our own code —
 sub-ulp f64 caveat-bypass, empty-attenuation produces a silent brick
 token, zero-byte HMAC key accepted by the auditor, empty-caveat cap
-authorizes every context. v0.5 closes all four. The point is that
+authorizes every context. v0.5 SHIPPED and closes 3 of 4 (A.1
+sub-ulp f64 is parked under design discussion). The point is that
 defects this severe are findable in a public loop — and the corpus
 is what makes the loop legible.
 
@@ -84,7 +85,7 @@ Threat model: docs/THREAT_MODEL.md
 Engine: macaroon-style HMAC chain, ed25519 holder-of-key (DPoP shape),
 NonceStore replay protection, signed revocation list, caveat DSL with
 boolean composition. ~17 kHz/core verifications. unsafe_code = forbid;
-230+ Rust tests including no-broaden proptests, ~318 TS tests.
+242 Rust tests including no-broaden proptests, 322 TS tests.
 
 If you have 30 min to read one round + the angles findings and find
 one thing I got wrong, I'll send a $50 gift card / whatever. The
@@ -108,7 +109,8 @@ with runnable PoCs and signed denial receipts as evidence. 10 rounds
 closed including the tool-poisoning case against the official
 @modelcontextprotocol/server-filesystem, plus a parallel-agent
 adversarial review of our own engine that surfaced 4 HIGH severity
-defects (we're closing them in v0.5). Repo:
+defects (v0.5 shipped: 3 of 4 closed; A.1 sub-ulp f64 under design
+discussion). Repo:
 github.com/euanmcrosson-dotcom/capnagent.
 
 Worth a 15-min call if you've thought about this surface? I'd

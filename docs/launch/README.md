@@ -21,9 +21,12 @@ engine.
   including **4 HIGH severity defects in our own engine** (sub-ulp
   f64 caveat-bypass, empty-attenuation brick, zero-byte audit key
   accepted, empty-caveat god-mode token).
-- **v0.4 shipped** mid-corpus. v0.5 (6 fixes) is queued and closes
-  the remaining BREAKS + the 4 HIGH findings.
-- **Tests:** 230+ Rust, ~318 TS, ~50 PoC + 97 angles tests.
+- **v0.4 shipped** mid-corpus. **v0.5 SHIPPED 2026-04-28** — closes
+  rounds 07/09/10 and 3 of the 4 HIGH angle findings (B.2
+  empty-attenuation, B.3 zero-byte audit key, C.5 empty-caveat
+  god-mode). The 4th HIGH (A.1 sub-ulp f64) remains under design
+  discussion (units? integer-only mode? operator docs?).
+- **Tests:** 242 Rust, 322 TS, criterion benches.
 
 Lead every post with this. The drafts below were originally written
 when the corpus had 1 round; they have been updated to lead with
