@@ -578,6 +578,63 @@ export class Verifier {
   }
 
   /**
+   * Whether a {@link RevocationList} is currently installed.
+   *
+   * Added in v0.4 in response to purple-team round 06: an operator
+   * who silently caught a `withRevocationList` install error could
+   * not previously detect the silent-failed install from the public
+   * API surface. Use this to write postcondition assertions in
+   * deployment-readiness code:
+   *
+   *     verifier.withRevocationList(list);  // may throw
+   *     if (!verifier.hasRevocationList()) {
+   *       throw new Error("revocation install silently failed");
+   *     }
+   */
+  hasRevocationList(): boolean {
+    ensureReady();
+    try {
+      return this._inner.hasRevocationList();
+    } catch (e) {
+      mapWasmError(e, "chain");
+    }
+  }
+
+  /**
+   * Wall-clock the installed revocation list was published, in
+   * milliseconds since UNIX epoch, or `undefined` if no list is
+   * installed.
+   *
+   * Lets operators detect stale lists ("the list is from 6 hours
+   * ago, the freshness window is 1 hour, fail the deploy probe").
+   */
+  revocationListIssuedAtMs(): number | undefined {
+    ensureReady();
+    try {
+      const v = this._inner.revocationListIssuedAtMs();
+      return v === undefined ? undefined : Number(v);
+    } catch (e) {
+      mapWasmError(e, "chain");
+    }
+  }
+
+  /**
+   * Whether a {@link NonceStore} is currently installed.
+   *
+   * Same shape as {@link hasRevocationList}. Lets operators detect
+   * the "hok-bound caps in use but no replay protection installed"
+   * configuration error.
+   */
+  hasNonceStore(): boolean {
+    ensureReady();
+    try {
+      return this._inner.hasNonceStore();
+    } catch (e) {
+      mapWasmError(e, "chain");
+    }
+  }
+
+  /**
    * Cheap chain-only check: confirm the HMAC chain holds under the root
    * key. Throws `CapabilityChainError` if the chain has been tampered
    * with or the wrong key was used.

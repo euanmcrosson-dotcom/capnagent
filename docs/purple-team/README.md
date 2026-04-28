@@ -118,7 +118,7 @@ the structural claim; blue-first dominates here.
 | 03 | Capability broadening (hostile-holder tampering) | CWE-345                | CLOSED 2026-04-27     | 2026-10-27     | chain ✗ (pre-receipt throw)   |
 | 04 | Revocation race (revoked-capability replay)      | OWASP A01, CWE-672     | CLOSED 2026-04-27     | 2026-10-27     | chain ✓ revoke ✗              |
 | 05 | Cross-origin exfil via http-agent                | OWASP LLM01, CWE-441   | CLOSED 2026-04-27     | 2026-10-27     | chain ✓ caveat ✗ (origin)     |
-| 06 | Silent-bypass on revocation-list install (operator trap) | OWASP A04, CWE-693, CWE-754 | **BREAKS** 2026-04-28 | 2026-10-28 | chain ✓ revoke (NOT INSTALLED) caveat ✓ |
+| 06 | Silent-bypass on revocation-list install (operator trap) | OWASP A04, CWE-693, CWE-754 | CLOSED 2026-04-28 (Run 1 BREAKS, Run 2 CLOSED post-v0.4) | 2026-10-28 | chain ✓ revoke (DETECTABLE) caveat ✓ |
 
 (Status enum: `OPEN`, `PARTIAL`, `CLOSED — date`. Gates symbols:
 `✓` gate checked + passed; `✗` gate checked + denied (this is

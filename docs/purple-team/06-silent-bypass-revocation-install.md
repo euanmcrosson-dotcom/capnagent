@@ -74,18 +74,24 @@ Known-bypasses:   - Once the engine fix lands (`hasRevocationList()`
                   - Out of scope: malicious operators. The threat
                     model here is operator-error / operator-inertia,
                     not adversarial operators.
-Re-validate-by:   2026-10-28   (re-run after the engine fix lands;
-                                expected to flip from BREAKS → CLOSED
-                                once `hasRevocationList()` ships and
-                                this PoC adds an assertion that
-                                catches the silent-bypass.)
+Re-validate-by:   2026-10-28   (next routine re-validation; engine
+                                fix has shipped — re-validation now
+                                checks for regression of the
+                                introspection methods.)
 Owner:            blue-lead
-Status:           BREAKS — defense does not hold for the operator-
-                  error path. Engine fix recommended; see Defender-
-                  actionable below. This is the FIRST round in the
-                  corpus to surface a real defect rather than confirm
-                  a holds-with-caveat status, exactly as the angles
-                  methodology was designed to do.
+Status:           CLOSED — 2026-04-28 (Run 2 with v0.4 fix)
+                  Run 1 BROKE; Run 2 CLOSED after the engine fix
+                  shipped (`hasRevocationList()` /
+                  `revocationListIssuedAtMs()` / `hasNonceStore()`
+                  introspection methods on `Verifier`). The
+                  silent-bypass operator pattern is no longer
+                  invisible from the API surface — operators can
+                  write a postcondition assertion that catches the
+                  silent-failed install. The first round in the
+                  corpus to BREAK then CLOSE within a single
+                  development cycle, demonstrating the angles
+                  methodology end-to-end: surface a real defect,
+                  ship a real fix, prove the fix with a re-run.
 
 ──────────────────────────────────────────────────────────────────
 Run history
@@ -149,6 +155,57 @@ Run 1 — 2026-04-28 02:08 UTC                              [FAIL]
                 NEW assertion (`verifier.hasRevocationList() === false`
                 after the silent-failed install) and the round
                 re-runs with status flipping BREAKS → CLOSED.
+
+Run 2 — 2026-04-28 02:19 UTC                              [PASS]
+  Env:          Windows 11 + Node 20.x + capnagent @ 2939ee0+v0.4
+                + @capnagent/core (real WASM via wasm-pack pkg
+                rebuilt with the v0.4 introspection methods)
+  Gates:        chain ✓ | proof - | replay - | revoke (DETECTABLE) | caveat ✓
+                  Same scenario as Run 1 — operator silently catches
+                  install error. Run-1 verdict (the cap is allowed
+                  when the operator believed it revoked) is
+                  STRUCTURALLY UNCHANGED — no semantic change to
+                  what verify_with_context does in that case. The
+                  fix is at the introspection layer.
+  Decision:     The verifier still ALLOWS the supposedly-revoked
+                cap (no list installed, capability passes caveats
+                and chain). What CHANGED is that the operator can
+                NOW detect the silent-failed install via
+                `verifier.hasRevocationList() === false` BEFORE
+                trusting the verifier in production. Postcondition
+                assertion now possible:
+                  verifier.withRevocationList(badList);
+                  // throw caught and ignored above
+                  assert(verifier.hasRevocationList(),
+                         "CRITICAL: install silently failed");
+                Two new positive-hypothesis tests verify:
+                  (a) silent-failed install → hasRevocationList()
+                      returns false, revocationListIssuedAtMs()
+                      returns undefined
+                  (b) successful install → hasRevocationList()
+                      returns true, revocationListIssuedAtMs()
+                      returns the published-at timestamp
+  Latency:      ~11 µs (verify_with_context unchanged)
+                hasRevocationList() / hasNonceStore(): O(1), single
+                Option-is-some check across the WASM boundary.
+                revocationListIssuedAtMs(): O(1).
+  FP-7d:        N/A
+  Gap-class:    NONE — the gap from Run 1 (DEFENSE-LOGIC + OPERATOR-
+                MISCONFIG joint) is closed at the engine layer for
+                the DEFENSE-LOGIC half. The OPERATOR-MISCONFIG half
+                still requires the operator to write the
+                postcondition assertion, but they CAN now write it.
+  Gap:          None at the engine layer. Operators must still
+                add the postcondition assertion to their
+                deployment-readiness code; the engine cannot force
+                this.
+  Action:       Round CLOSED. Engine v0.4 introspection methods
+                shipped. Defender-actionable updated below to
+                document the postcondition pattern. The PoC tests
+                serve as regression coverage — if a future change
+                breaks `hasRevocationList()` returning false on a
+                silent-failed install, this PoC's Run-2 tests will
+                fail.
 ```
 
 ## Evidence

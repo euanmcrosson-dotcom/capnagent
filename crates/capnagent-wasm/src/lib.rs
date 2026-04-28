@@ -224,6 +224,46 @@ impl Verifier {
         })
     }
 
+    /// Whether a `RevocationList` is currently installed.
+    ///
+    /// Added in v0.4 in response to purple-team round 06: an operator
+    /// who silently caught a `withRevocationList` install error could
+    /// not previously detect the silent-failed install from the
+    /// public API surface. Use this to write postcondition assertions
+    /// in deployment-readiness code:
+    ///
+    /// ```ts
+    /// verifier.withRevocationList(list);  // may throw
+    /// if (!verifier.hasRevocationList()) {
+    ///   throw new Error("revocation install silently failed");
+    /// }
+    /// ```
+    #[wasm_bindgen(js_name = "hasRevocationList")]
+    pub fn has_revocation_list(&self) -> Result<bool, JsError> {
+        Ok(self.inner()?.has_revocation_list())
+    }
+
+    /// Wall-clock the installed revocation list was published, in
+    /// milliseconds since UNIX epoch, or `undefined` if no list is
+    /// installed.
+    ///
+    /// Lets operators detect stale lists ("the list is from 6 hours
+    /// ago, the freshness window is 1 hour, fail the deploy probe").
+    #[wasm_bindgen(js_name = "revocationListIssuedAtMs")]
+    pub fn revocation_list_issued_at_ms(&self) -> Result<Option<u64>, JsError> {
+        Ok(self.inner()?.revocation_list().map(|l| l.issued_at_ms))
+    }
+
+    /// Whether a `NonceStore` is currently installed.
+    ///
+    /// Same shape as `hasRevocationList`. Lets operators detect the
+    /// "hok-bound caps in use but no replay protection installed"
+    /// configuration error.
+    #[wasm_bindgen(js_name = "hasNonceStore")]
+    pub fn has_nonce_store(&self) -> Result<bool, JsError> {
+        Ok(self.inner()?.has_nonce_store())
+    }
+
     /// Install a signed [`RevocationList`]. The list's HMAC signature
     /// is verified against the verifier's root key BEFORE installation;
     /// mismatch throws a JS-side `Error` with message `"invalid

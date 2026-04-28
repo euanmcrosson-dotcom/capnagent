@@ -156,34 +156,55 @@ describe("Round 06: silent-bypass on revocation-list install", () => {
       // they revoked is silently authorized. Round status: BREAKS.
     });
 
-    it("the broken state is invisible from the public Verifier API", async () => {
-      // Sister test to make the gap explicit. After the silent-failed
-      // install, can a postcondition-checking operator detect that
-      // they don't actually have a list installed?
-      //
-      // Answer: NO. The public Verifier has no introspection methods.
-      // This test pins the gap so a future fix that adds
-      // hasRevocationList() will cause this assertion to flip and
-      // the test to be updated.
+    it("v0.4 fix: the silent-bypass is now DETECTABLE via hasRevocationList()", async () => {
+      // Run 2 (post-fix). The engine v0.4 work added introspection
+      // methods to Verifier — `hasRevocationList()`,
+      // `revocationListIssuedAtMs()`, `hasNonceStore()` — so an
+      // operator can write a postcondition assertion that catches
+      // the silent-failed install before relying on the
+      // (non-existent) defense.
+      const { capId } = await makeFixture();
+      const rev = new Revoker(WRONG_KEY);
+      rev.revoke(capId);
+      const badList = rev.publish(1_700_000_000_000);
+
+      const verifier = new Verifier(ROOT_KEY);
+
+      // Fresh verifier: no list installed, introspection says so.
+      expect(verifier.hasRevocationList()).toBe(false);
+      expect(verifier.revocationListIssuedAtMs()).toBeUndefined();
+
+      try {
+        verifier.withRevocationList(badList);
+      } catch {
+        // Silent-bypass operator pattern, same as Run 1.
+      }
+
+      // THE FIX: the silent-failed install is now detectable.
+      // Operator's postcondition catches it.
+      expect(verifier.hasRevocationList()).toBe(false);
+      expect(verifier.revocationListIssuedAtMs()).toBeUndefined();
+    });
+
+    it("v0.4 fix: a successful install reflects in the introspection", async () => {
+      const { capId } = await makeFixture();
+      const rev = new Revoker(ROOT_KEY); // CORRECT key
+      rev.revoke(capId);
+      const goodList = rev.publish(1_700_000_000_000);
+
+      const verifier = new Verifier(ROOT_KEY).withRevocationList(goodList);
+      expect(verifier.hasRevocationList()).toBe(true);
+      expect(verifier.revocationListIssuedAtMs()).toBe(1_700_000_000_000);
+    });
+
+    it("v0.4 fix: hasNonceStore mirrors hasRevocationList for the opt-in NonceStore defense", async () => {
+      const { NonceStore } = await import("../index.js");
       await init();
       const verifier = new Verifier(ROOT_KEY);
-      const publicMethods = Object.getOwnPropertyNames(Object.getPrototypeOf(verifier)).filter(
-        (m) => !m.startsWith("_") && m !== "constructor",
-      );
+      expect(verifier.hasNonceStore()).toBe(false);
 
-      // Find any method that COULD plausibly answer
-      // "do I have a revocation list installed?"
-      const introspectionMethods = publicMethods.filter(
-        (m) =>
-          m.toLowerCase().includes("revocation") &&
-          (m.startsWith("has") || m.startsWith("get") || m.startsWith("is") || m.includes("List")),
-      );
-      const isQueryable = introspectionMethods.some((m) => !m.startsWith("with"));
-
-      // Pin the current state: NO introspection method exists.
-      // When the engine fix lands, flip this expectation and add a
-      // separate test for the introspection method's behavior.
-      expect(isQueryable).toBe(false);
+      const installed = new Verifier(ROOT_KEY).withNonceStore(new NonceStore());
+      expect(installed.hasNonceStore()).toBe(true);
     });
   });
 

@@ -150,6 +150,31 @@ impl Verifier {
         self.revocation_list.as_ref()
     }
 
+    /// Whether a [`RevocationList`] is currently installed.
+    ///
+    /// Added in v0.4 in response to purple-team round 06: an operator
+    /// who silently caught a `with_revocation_list` install error
+    /// could not detect the silent-failed install from the public API
+    /// surface. This method (plus [`Self::has_nonce_store`]) closes
+    /// that introspection gap so deployment-readiness code can write
+    /// postcondition assertions.
+    #[must_use]
+    pub fn has_revocation_list(&self) -> bool {
+        self.revocation_list.is_some()
+    }
+
+    /// Whether a [`NonceStore`] is currently installed.
+    ///
+    /// Same shape as [`Self::has_revocation_list`]. Added in v0.4 to
+    /// close the introspection gap surfaced by purple-team round 06.
+    /// `withNonceStore` doesn't currently throw, but the broader gap
+    /// — "operator believes a defense is installed when it isn't" —
+    /// applies equally to `NonceStore`-based replay protection.
+    #[must_use]
+    pub fn has_nonce_store(&self) -> bool {
+        self.nonce_store.is_some()
+    }
+
     /// Recompute the HMAC chain for `cap` and compare against its signature
     /// in constant time. Honours `holder_of_key` if present — the chain
     /// folds in the holder-of-key bytes after the identifier and before

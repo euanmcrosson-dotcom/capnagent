@@ -9,6 +9,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **v0.4 — Verifier introspection methods (`hasRevocationList`,
+  `hasNonceStore`, `revocationListIssuedAtMs`).** Closes the gap
+  surfaced by purple-team round 06: a silent-failed
+  `withRevocationList` install was previously invisible from the
+  public API surface. Operators can now write postcondition
+  assertions in deployment-readiness code:
+  ```ts
+  verifier.withRevocationList(list);  // may throw
+  if (!verifier.hasRevocationList()) {
+    throw new Error("CRITICAL: install silently failed");
+  }
+  ```
+  Three methods added to `Verifier` across the Rust core, WASM
+  bindings, and TS wrapper:
+  - `hasRevocationList(): boolean`
+  - `revocationListIssuedAtMs(): number | undefined` (lets operators
+    detect stale lists for freshness-window checks)
+  - `hasNonceStore(): boolean` (closes the same shape of gap for
+    the opt-in NonceStore defense)
+  Round 06 re-runs in Run 2 with the introspection methods
+  available; status flips from BREAKS to CLOSED. **First round in
+  the corpus to break, drive an engine fix, and close — within a
+  single development cycle.** Tests counts: @capnagent/core 84 → 86
+  (+2 round 06 v0.4 fix tests).
+
 - **Purple-team round 06 — silent-bypass on revocation-list install
   (operator trap). Status: BREAKS — first round in the corpus to
   surface a real defect.** Round 04 documented the install-time
