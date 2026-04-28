@@ -9,6 +9,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Purple-team round 10 — encoding / path-traversal against fs-
+  sandbox. Status: BREAKS.** Round 07 found that substring `matches`
+  isn't path-aware (lateral substring); round 10 widens the case to
+  ESCAPE-shaped traversal: `<sandbox>/../outside/secret.txt` contains
+  the sandbox prefix as a substring (so caveat allows) but Node's
+  `fs.readFile` resolves the `..` and reads the out-of-sandbox file.
+  Captured receipt + verified file contents (`OUT-OF-SANDBOX-SECRET`
+  string actually read) are the visceral evidence. PoC at
+  `examples/mcp-fs-agent/src/__tests__/encoding-attacks.purple.test.ts`
+  — 8 tests, all passing. Same v0.5 fix as round 07 (Context-provider
+  canonicalization + `starts_with` DSL operator); round 10 widens
+  the case for both halves of the fix because canonicalization alone
+  doesn't address round 07's lateral-substring shape, and
+  `starts_with` alone doesn't address round 10's escape-after-prefix
+  shape.
+
+- **`docs/THREAT_MODEL.md` — canonical in-scope / out-of-scope
+  reference.** Single document covering: what capnagent IS, the
+  in-scope threats (table of 10 closed rounds with status), the
+  out-of-scope threats (table of 12 attack classes that aren't
+  capnagent's job, with rationale and pointers to the right defense
+  layer for each), the operator-responsibility list distilled from
+  rounds 06–10's defender-actionable sections, and the multi-layer-
+  defense composition diagram. Replaces ad-hoc "what does capnagent
+  defend against?" prose scattered across the README + DESIGN.md.
+  Out-of-scope categories explicitly named: many-shot jailbreaking,
+  system-prompt extraction, Crescendo, roleplay, DAN, GCG suffix
+  attacks, capability-dependent reasoning, side-channel exfil,
+  pure-prompt-injection of model reasoning, privilege escalation
+  within tool surfaces, root-key compromise, deployment-pipeline
+  compromise, TOCTOU races, DoS, distributed replay. Each comes
+  with a one-line "right defense for this" pointer to the layer
+  that DOES own it.
+
 - **Purple-team rounds 07, 08, 09 — failure-mode tests of existing
   defenses, three rounds in one parallel-worktree pass. The corpus
   matures from "5 rounds all holding" to "9 rounds: 6 closed, 3

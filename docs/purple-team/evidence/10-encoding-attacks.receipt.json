@@ -1,0 +1,34 @@
+{
+  "_annotation": {
+    "scenario": "Path-traversal attack against the sandbox-scoped fs cap. The traversal path /sandbox/../outside/secret.txt CONTAINS the sandbox prefix as a substring, so capnagent's caveat substring-match fires and ALLOWS the call. Node's fs.readFile then resolves the `..` and reads the out-of-sandbox secret. Combined with the verified-read content, this is the gap.",
+    "sandbox_prefix": "C:\\Users\\euanc\\AppData\\Local\\Temp\\capnagent-encoding-evidence-8NzR1I\\sandbox",
+    "traversal_path_attempted": "C:\\Users\\euanc\\AppData\\Local\\Temp\\capnagent-encoding-evidence-8NzR1I\\sandbox/../outside/secret.txt",
+    "file_actually_read_outside_sandbox": "OUT-OF-SANDBOX-SECRET",
+    "finding": "Defense BREAKS for path-traversal-shaped inputs. Same fix as round 07 (Context-provider canonicalization + starts_with DSL operator)."
+  },
+  "receipt": {
+    "version": 1,
+    "capabilityIdentifier": "fs.read",
+    "caveats": [
+      {
+        "predicate": "caller == \"agent:fs\""
+      },
+      {
+        "predicate": "now <= @2099-01-01T00:00:00Z"
+      },
+      {
+        "predicate": "(tool == \"read_file\"      AND arg.path matches \"C:\\\\Users\\\\euanc\\\\AppData\\\\Local\\\\Temp\\\\capnagent-encoding-evidence-8NzR1I\\\\sandbox\") OR (tool == \"list_directory\" AND arg.path matches \"C:\\\\Users\\\\euanc\\\\AppData\\\\Local\\\\Temp\\\\capnagent-encoding-evidence-8NzR1I\\\\sandbox\") OR (tool == \"directory_tree\" AND arg.path matches \"C:\\\\Users\\\\euanc\\\\AppData\\\\Local\\\\Temp\\\\capnagent-encoding-evidence-8NzR1I\\\\sandbox\")"
+      }
+    ],
+    "contextSummary": {
+      "caller": "agent:fs",
+      "tool": "read_file",
+      "argsHash": "660e563406c706af27ab1722b11e9566ab6cb1bb590a098b507ec4339441ebdd"
+    },
+    "outcome": {
+      "kind": "allowed"
+    },
+    "timestampMs": 1777341764350,
+    "signature": "78d8beb68d392a82f4da63c41af820cb1bc998b916a5f350e7018869ea27beb6"
+  }
+}

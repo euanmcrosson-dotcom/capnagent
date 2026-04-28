@@ -14,6 +14,7 @@
     "demo:live-mcp": "tsx src/bin/demo-live-mcp.ts",
     "regen-purple-evidence": "tsx src/bin/regen-purple-evidence.ts",
     "regen-purple-evidence-07": "tsx src/bin/regen-purple-evidence-07.ts",
+    "regen-purple-evidence-10": "tsx src/bin/regen-purple-evidence-10.ts",
     "lint": "biome check src",
     "typecheck": "tsc --noEmit"
   },

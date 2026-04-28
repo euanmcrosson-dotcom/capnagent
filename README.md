@@ -40,6 +40,12 @@ receipt evidence per round.
 | 07 | fs-sandbox prefix foot-gun                     | OWASP A04, CWE-22    | **BREAKS** (substring `matches` not path-aware; fix queued) | [`sandbox-prefix-footgun.purple.test.ts`](examples/mcp-fs-agent/src/__tests__/sandbox-prefix-footgun.purple.test.ts) — 9/9 pass |
 | 08 | Forgot NonceStore on hok-bound caps            | OWASP A04, A07       | CLOSED (v0.4 `hasNonceStore()` enables detection) | [`forgot-nonce-store.purple.test.ts`](packages/capnagent/src/__tests__/forgot-nonce-store.purple.test.ts) — 6/6 pass |
 | 09 | IDN homograph in origin allowlist              | CWE-1007, OWASP A04  | **BREAKS** (`isExactOrigin` accepts punycode silently; TR39 fix queued) | [`idn-homograph-origin.purple.test.ts`](examples/mcp-http-agent/src/__tests__/idn-homograph-origin.purple.test.ts) — 13/13 pass |
+| 10 | Encoding / path-traversal against fs-sandbox   | OWASP A04, CWE-22    | **BREAKS** (substring caveat allows `/sandbox/../outside/secret`; v0.5 fix queued — same as round 07) | [`encoding-attacks.purple.test.ts`](examples/mcp-fs-agent/src/__tests__/encoding-attacks.purple.test.ts) — 8/8 pass |
+
+See [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) for the canonical
+in-scope / out-of-scope table covering every closed round plus the
+attack classes capnagent explicitly does NOT defend against (model
+behavior, system-prompt extraction, jailbreaks, GCG suffixes, etc.).
 
 Each round produces:
 
