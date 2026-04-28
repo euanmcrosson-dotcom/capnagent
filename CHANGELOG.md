@@ -9,6 +9,93 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Four-agent parallel angles run — 36 angles, 17 real findings, 4
+  HIGH-severity.** Lighter-weight than full purple-team rounds:
+  each agent wrote one `*.angles.test.ts` file with ≥5 angles, each
+  marked `[FINDING]` if it surfaced a real defect. Total +97 tests
+  (`@capnagent/core` 92 → 189). The angles methodology produced
+  more findings in one parallel run than the previous 10 rounds
+  combined.
+
+  **Four files added** (all under `packages/capnagent/src/__tests__/`):
+  - `angles-dsl-edges.angles.test.ts` — Terminal A, 33 tests, 2 FINDINGs
+  - `angles-serialization.angles.test.ts` — Terminal B, 24 tests, 3 FINDINGs
+  - `angles-composition.angles.test.ts` — Terminal C, 22 tests, 6 FINDINGs
+  - `angles-timing.angles.test.ts` — Terminal D, 18 tests, 6 FINDINGs
+
+  **HIGH-severity findings (4):**
+  - **A.1: Sub-ulp f64 collapse defeats integer-looking caveats.**
+    Holder passes `"amount": 50.000000000000001`; JSON→f64 collapses
+    to bit-identical `50.0`; caveat `arg.amount <= 50` admits the
+    call. Real authorization bypass class. Mitigation today: use
+    units (`50_cents` against integer-cents args).
+  - **B.2: `cap.attenuate("")` produces silent permanent-deny
+    token.** Empty predicate accepted at attenuation, parses fine,
+    chain check passes — but every verify denies because the DSL
+    parser can't parse `""`. Any holder in a chain can silently
+    brick a delegated cap. Engine fix: validate predicates parse-
+    as-DSL at attenuation time, not verify time.
+  - **B.3: `Auditor` accepts zero-byte key.** RFC 2104 permits it,
+    but a zero-entropy audit key means any attacker who guesses
+    "empty" can mint forged receipts. Realistic deployment trap:
+    `Buffer.from(process.env.AUDIT_KEY)` when the env var is unset.
+    Engine fix: reject keys < 16 bytes at construction.
+  - **C.5: Empty-caveat cap is god-mode.** `Issuer.issue("x").build()`
+    with NO caveats is valid; chain passes; every context is
+    allowed. Engine fix: require ≥1 caveat at `build()` time, or
+    add a `requireExpiry()` API gate.
+
+  **MEDIUM-severity findings (2):**
+  - **D.1: RevocationList has no freshness window at install** —
+    install accepts any-age list (5 years stale OR future). v0.4
+    `revocationListIssuedAtMs()` is the introspection point but
+    no policy is enforced.
+  - **D.5: `Context.nowMs` default panics on wasm32** — JSDoc
+    claims `Date.now()` default; actual WASM impl calls
+    `SystemTime::now()` which panics with `"time not implemented"`.
+    Surfaces as `CapabilityChainError("unreachable")`.
+
+  **LOW / INFORMATIONAL findings (11):**
+  - A.2: NUL bytes in DSL string literals (log-spoofing risk)
+  - B.1: Negative `nowMs` throws wrong error class with misleading
+    "floating point" message
+  - C.1: All chain tampers produce opaque `"invalid signature"`
+    (incident-response forensics gap)
+  - C.2: `attenuate(X).attenuate(X)` doesn't dedupe
+  - C.3: Conflicting caveats (`amount <= 50 AND amount > 100`)
+    produce useless cap with no warning
+  - C.4: Pin caps by reference, not re-serialize (advisory)
+  - C.6: `attenuate` consumes via wasm-bindgen `mut self`; reuse
+    of original handle throws raw `"null pointer passed to rust"`
+    instead of typed CapabilityError
+  - D.2: 5-digit-year timestamps parse-then-perma-deny
+  - D.3: NonceStore TTL is half-open `[T, T+ttl)` — 1ms window at
+    boundary
+  - D.4: Receipt `timestampMs` = `ctx.nowMs` (no independent
+    auditor clock)
+  - D.6: `now ==` is sub-second precision (operator surprise)
+
+  **Critical-path angles that HELD (most operationally important
+  news):**
+  - **D.5: Concurrent NonceStore (100-way race)** — Mutex
+    correctly serializes; exactly 1 admit, 99 denials with
+    "proof replay detected". The replay defense is genuinely
+    race-safe under load. **This was the highest-stakes test in
+    the whole run and it works.**
+  - Cryptographic chain + audit MAC + canonical-JSON: rock-solid
+    under 1000-caveat chains, CJK Unicode, deep arg nesting,
+    shuffled key order. No bypass at the byte level.
+  - DSL is robust to structural attacks (deep nesting, missing
+    fields, type confusion). The fragility is at numeric-precision
+    semantics and edge translation surfaces.
+  - hok binding survives attenuation; stripping hok bytes from
+    the wire breaks the chain.
+  - 100 concurrent verifies route correctly with no state leak.
+
+  **v0.5 backlog grows:** the 4 HIGH-severity findings + 2 MEDIUM
+  ones become formal engine fixes. The 11 LOW findings stay as
+  regression coverage in the angles test files.
+
 - **Purple-team round 10 — encoding / path-traversal against fs-
   sandbox. Status: BREAKS.** Round 07 found that substring `matches`
   isn't path-aware (lateral substring); round 10 widens the case to
