@@ -222,86 +222,41 @@ describe("purple-team 09: IDN homograph in origin allowlist", () => {
     });
   });
 
-  describe("foot-gun (a): operator pastes raw unicode homograph into allowlist", () => {
-    it("issuance THROWS — but with a misleading error that doesn't mention IDN", () => {
-      // `isExactOrigin` rejects the unicode form because `s === u.origin`
-      // fails (input is unicode, origin is punycode). This is accidental
-      // partial defense — the operator at least gets an error. But the
-      // error message says "not an exact origin," which is bewildering
-      // when the URL string LOOKS to the operator like a perfectly
-      // canonical scheme://host with no path. The operator is left to
-      // debug a problem they cannot see.
+  describe("foot-gun (a): operator pastes raw unicode homograph into allowlist [CLOSED v0.5]", () => {
+    it("issuance THROWS with an error that explicitly names IDN/homograph", () => {
+      // v0.5 closure: `exactOriginRejectionReason` detects non-ASCII
+      // codepoints in the input string and rejects with a message
+      // naming "IDN", "homograph", and "TR39 confusable" so the
+      // operator can identify the foot-gun without external knowledge.
       expect(() =>
         issueOriginScopedGetCapability({
           allowedOrigins: [HOMOGRAPH_UNICODE],
           caller: CALLER,
         }),
-      ).toThrowError(/is not an exact origin/);
-
-      // Pin: the error doesn't mention "IDN", "homograph", "unicode",
-      // "punycode", or "confusable". A future-fix should improve this.
-      try {
-        issueOriginScopedGetCapability({
-          allowedOrigins: [HOMOGRAPH_UNICODE],
-          caller: CALLER,
-        });
-      } catch (err) {
-        const msg = (err as Error).message;
-        expect(msg).not.toMatch(/IDN|homograph|punycode|confusable|mixed.script/i);
-      }
+      ).toThrowError(/IDN|homograph|non-ASCII/);
     });
   });
 
-  describe("foot-gun (b): operator pastes PUNYCODE form (the realistic exploitation path)", () => {
-    it("POSITIVE HYPOTHESIS — issuance SUCCEEDS WITHOUT WARNING (this is the gap)", async () => {
-      // The realistic threat: operator's tooling (browser address bar,
-      // OS clipboard, CLI URL canonicalizer, JSON config loader, ...)
-      // converted the visually-similar Cyrillic-а URL to its punycode
-      // form silently. The operator stores the punycode in
-      // `allowedOrigins`. There is no IDN-confusable check.
-      //
-      // The hypothesis says issuance SHOULD warn or reject. Empirically
-      // it does NOT — which is the round's BREAKS finding.
-      const cap = issueOriginScopedGetCapability({
-        allowedOrigins: [HOMOGRAPH_PUNYCODE],
-        caller: CALLER,
-      });
-      expect(cap).toBeDefined();
-      // Successful issuance => the cap is built without complaint.
-      // This documents the gap.
+  describe("foot-gun (b): operator pastes PUNYCODE form [CLOSED v0.5]", () => {
+    it("issuance THROWS naming the punycode label as the reason", () => {
+      // Originally [BREAKS]: issuance succeeded silently because the
+      // punycode form is a valid canonical URL. v0.5 walks the
+      // hostname's labels and refuses any that begin `xn--` — the
+      // IDNA-2008 prefix that uniquely marks an encoded IDN label.
+      expect(() =>
+        issueOriginScopedGetCapability({
+          allowedOrigins: [HOMOGRAPH_PUNYCODE],
+          caller: CALLER,
+        }),
+      ).toThrowError(/punycode|xn--|IDN/);
     });
 
-    it("the resulting cap ALLOWS a homograph-host call — attacker stand-in receives the request", async () => {
-      const h = await makeHarnessAllowingPunycodeHomograph();
-
-      // The agent emits an http.get to the unicode homograph form (as
-      // it would after a prompt-injection-style attack tells it to
-      // call "https://аpi.example.com/data"). The Context normalizer
-      // parses the URL → arg.origin = punycode. The caveat compares
-      // arg.origin == HOMOGRAPH_PUNYCODE → match → ALLOWED. Fetch
-      // runs and the (localhost-stubbed) attacker stand-in receives
-      // the request.
-      const result = (await h.guarded.client.callTool("http.get", {
-        url: `${HOMOGRAPH_UNICODE}/data`,
-      })) as { status: number; body: string };
-      expect(result.status).toBe(200);
-      // The attacker stand-in saw the request. In a non-stubbed
-      // deployment, this would be the real attacker-controlled host.
-      expect(attackerStandinServer.hits.map((x) => x.url)).toEqual(["/data"]);
-    });
-
-    it("calls to the LEGITIMATE ASCII origin are DENIED — operator's intent is misrepresented", async () => {
-      const h = await makeHarnessAllowingPunycodeHomograph();
-
-      // The operator believed they allowed `https://api.example.com`.
-      // A subsequent agent call to the actual ASCII host is DENIED
-      // because the cap is for the homograph's origin, not the ASCII
-      // one. This is the visceral expression of the foot-gun: the
-      // operator's mental model and the cap's actual semantics
-      // disagree.
-      await expect(
-        h.guarded.client.callTool("http.get", { url: `${PUBLIC_GOOD_ASCII}/data` }),
-      ).rejects.toBeInstanceOf(CapabilityDeniedError);
+    it("the cap-allowing-homograph harness can no longer be constructed", async () => {
+      // makeHarnessAllowingPunycodeHomograph now throws at issuance.
+      // This is the structural closure of round 09's exploitation path.
+      await expect(makeHarnessAllowingPunycodeHomograph()).rejects.toThrow(
+        /punycode|xn--|IDN/,
+      );
     });
   });
 
@@ -345,80 +300,66 @@ describe("purple-team 09: IDN homograph in origin allowlist", () => {
       expect(cap).toBeDefined();
     });
 
-    it("Cyrillic-н in `exaнple.com` follows the same pattern: punycode passes, unicode rejected", () => {
+    it("Cyrillic-н in `exaнple.com` is rejected in BOTH unicode AND punycode form [CLOSED v0.5]", () => {
       // The Cyrillic-н homograph (U+043D, visually like Latin n).
-      // Confirms the pattern is general — not specific to
-      // Cyrillic-а — and that the foot-gun shape repeats for any
-      // confusable codepoint pair the Unicode TR39 catalog covers.
+      // Confirms the v0.5 closure is general — not specific to
+      // Cyrillic-а — and that both shapes (unicode + punycode) are
+      // refused by the same `exactOriginRejectionReason` walk.
       expect(() =>
         issueOriginScopedGetCapability({
           allowedOrigins: [EXAMPLE_HOMOGRAPH_UNICODE],
           caller: CALLER,
         }),
-      ).toThrowError(/is not an exact origin/);
+      ).toThrowError(/IDN|homograph|non-ASCII/);
 
-      const cap = issueOriginScopedGetCapability({
-        allowedOrigins: [EXAMPLE_HOMOGRAPH_PUNYCODE],
-        caller: CALLER,
-      });
-      expect(cap).toBeDefined();
+      expect(() =>
+        issueOriginScopedGetCapability({
+          allowedOrigins: [EXAMPLE_HOMOGRAPH_PUNYCODE],
+          caller: CALLER,
+        }),
+      ).toThrowError(/punycode|xn--|IDN/);
     });
 
-    it("mixed-script label (Latin + Cyrillic in the same DNS label) is also accepted in punycode form", () => {
+    it("mixed-script label (Latin + Cyrillic in the same DNS label) is rejected in punycode form [CLOSED v0.5]", () => {
       // A label that mixes scripts — `apа.example.com` with `ap` Latin
       // and `а` Cyrillic — is the canonical UTS-39 "mixed-script"
-      // confusable. Modern browsers refuse to render this as IDN
-      // (they show punycode). capnagent has no equivalent guard:
-      // the punycode form sails through.
+      // confusable. v0.5 refuses ALL `xn--` labels at the allowlist
+      // boundary (stricter than TR39 — see the rationale in
+      // `exactOriginRejectionReason`).
       const mixedUnicode = `https://ap${CYRILLIC_A}.example.com`;
       const mixedPunycode = new URL(mixedUnicode).origin;
       expect(mixedPunycode).toMatch(/^https:\/\/xn--/);
 
-      // Operator pastes the punycode form: ACCEPTED with no
-      // mixed-script warning.
-      const cap = issueOriginScopedGetCapability({
-        allowedOrigins: [mixedPunycode],
-        caller: CALLER,
-      });
-      expect(cap).toBeDefined();
+      expect(() =>
+        issueOriginScopedGetCapability({
+          allowedOrigins: [mixedPunycode],
+          caller: CALLER,
+        }),
+      ).toThrowError(/punycode|xn--|IDN/);
     });
   });
 
-  describe("threat-surface documentation", () => {
-    it("documents that the realistic threat surface is operator config, not agent input", async () => {
+  describe("threat-surface documentation [CLOSED v0.5]", () => {
+    it("documents that round 09's exploitation path is closed at issuance", async () => {
       // The agent NEVER chooses the allowlist. The allowlist is
       // operator config. So the threat shape is "attacker tricks
       // operator into allowlisting attacker-controlled host" — not
-      // "attacker tricks agent into emitting a confusing URL." The
-      // round 05 defense already handles the latter (a homograph URL
-      // emitted by the agent normalizes to punycode and fails to
-      // match an ASCII allowlist entry — that test passes above).
+      // "attacker tricks agent into emitting a confusing URL." Round
+      // 05 already handles the latter (a homograph URL emitted by the
+      // agent normalizes to punycode and fails to match an ASCII
+      // allowlist entry).
       //
-      // The gap is at issuance: the validator does not flag homograph
-      // / mixed-script / confusable inputs. The operator owns the
-      // misconfig — and the engine offers no help detecting it.
+      // v0.5 closes the issuance side: `exactOriginRejectionReason`
+      // refuses both raw-unicode and punycode forms with diagnostics
+      // that explicitly name IDN / homograph / TR39. The operator no
+      // longer needs out-of-band Unicode knowledge to recognize the
+      // foot-gun.
       //
-      // Pin this as a structural test so the "what's the threat
-      // surface here" question has an answer in the test file
-      // forever, not just in the docs.
-      const harnessHomograph = await makeHarnessAllowingPunycodeHomograph();
-
-      // (1) The cap exists and behaves as a permissive cap for the
-      //     homograph host (already tested above; reasserted here for
-      //     proximity to the threat-model claim).
-      await expect(
-        harnessHomograph.guarded.client.callTool("http.get", {
-          url: `${HOMOGRAPH_UNICODE}/x`,
-        }),
-      ).resolves.toBeDefined();
-
-      // (2) No warning, no diagnostic, no signal of the foot-gun
-      //     anywhere in the receipt stream — receipts only describe
-      //     allow/deny outcomes, not allowlist hygiene.
-      const r = harnessHomograph.guarded.receipts[0] as {
-        outcome: { kind: string };
-      };
-      expect(r.outcome.kind).toBe("allowed");
+      // Pin: the harness that allowed homograph calls (round 09's
+      // BREAKS witness) can no longer be constructed.
+      await expect(makeHarnessAllowingPunycodeHomograph()).rejects.toThrow(
+        /punycode|xn--|IDN/,
+      );
     });
   });
 });

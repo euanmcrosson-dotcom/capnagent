@@ -1029,3 +1029,91 @@ fn single_capability_now_covers_browse_or_buy() {
     ctx = ctx_with("2026-04-27T00:00:00Z", "agent:planner", "bank.wire");
     assert!(!evaluate(&p, &ctx).unwrap());
 }
+
+// ───────────────────────── starts_with (v0.5) ─────────────────────────
+
+#[test]
+fn starts_with_anchored_prefix_admits_only_when_prefix_at_byte_zero() {
+    // Round 07 closure: a path-prefix caveat written with `starts_with`
+    // must NOT admit paths that contain the prefix as a non-anchored
+    // substring. With `matches`, "/etc/sandbox-bypass" matches "/sandbox"
+    // because matches is contains. With `starts_with` it does not.
+    let p = parse(r#"arg.path starts_with "/sandbox""#).unwrap();
+
+    let mut ctx = empty_ctx();
+    ctx.args = serde_json::json!({"path": "/sandbox/file.txt"});
+    assert!(evaluate(&p, &ctx).unwrap(), "anchored prefix should match");
+
+    ctx.args = serde_json::json!({"path": "/etc/sandbox-bypass"});
+    assert!(
+        !evaluate(&p, &ctx).unwrap(),
+        "non-anchored substring must not match"
+    );
+
+    ctx.args = serde_json::json!({"path": "/etc/passwd"});
+    assert!(!evaluate(&p, &ctx).unwrap(), "unrelated path must not match");
+}
+
+#[test]
+fn starts_with_with_matches_for_substring_round_07_contrast() {
+    // Documentation-as-test: same input, different operator, different
+    // result. This is the foot-gun the operator was added to fix.
+    let with_matches = parse(r#"arg.path matches "/sandbox""#).unwrap();
+    let with_starts_with = parse(r#"arg.path starts_with "/sandbox""#).unwrap();
+
+    let mut ctx = empty_ctx();
+    ctx.args = serde_json::json!({"path": "/etc/sandbox-bypass"});
+    assert!(
+        evaluate(&with_matches, &ctx).unwrap(),
+        "matches accepts substring (the foot-gun)"
+    );
+    assert!(
+        !evaluate(&with_starts_with, &ctx).unwrap(),
+        "starts_with rejects (the fix)"
+    );
+}
+
+#[test]
+fn starts_with_on_number_is_type_mismatch() {
+    let p = parse(r#"arg.amount starts_with "5""#).unwrap();
+    let mut ctx = empty_ctx();
+    ctx.args = serde_json::json!({"amount": 50});
+    assert!(matches!(
+        evaluate(&p, &ctx),
+        Err(DslError::TypeMismatch { .. })
+    ));
+}
+
+#[test]
+fn starts_with_composes_with_and_or() {
+    // The shopping-agent / fs-agent pattern: tool == X AND arg.path
+    // starts_with "<sandbox>". Confirm the operator round-trips through
+    // the full boolean parser.
+    let p = parse(
+        r#"tool == "read_file" AND (arg.path starts_with "/sandbox/" OR arg.path starts_with "/var/tmp/")"#,
+    )
+    .unwrap();
+
+    let mut ctx = ctx_with("2026-04-27T00:00:00Z", "x", "read_file");
+    ctx.args = serde_json::json!({"path": "/sandbox/x.txt"});
+    assert!(evaluate(&p, &ctx).unwrap());
+
+    ctx.args = serde_json::json!({"path": "/var/tmp/y.log"});
+    assert!(evaluate(&p, &ctx).unwrap());
+
+    ctx.args = serde_json::json!({"path": "/etc/passwd"});
+    assert!(!evaluate(&p, &ctx).unwrap());
+}
+
+#[test]
+fn starts_with_keyword_does_not_munch_idents() {
+    // `starts_with_x` is a regular identifier-shaped name; the parser
+    // must NOT split it into operator + ident. The grammar disallows
+    // `arg.starts_with_x`-style segments, but the principle is the same:
+    // keyword recognition requires non-ident-continuation.
+    let p = parse(r#"arg.starts_with_x == "y""#);
+    // This is a legal identifier path (parser-level), even if the
+    // segment "starts_with_x" wouldn't resolve at evaluate time. The
+    // important point is the parser doesn't error on it.
+    assert!(p.is_ok(), "parser must not split starts_with_x as op + ident");
+}

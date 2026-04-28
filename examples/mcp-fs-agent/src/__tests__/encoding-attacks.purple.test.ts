@@ -93,54 +93,46 @@ afterEach(async () => {
   await fs.rm(h.root, { recursive: true, force: true });
 });
 
-describe("Round 10: encoding / normalization attacks against fs-sandbox", () => {
-  describe("the path-traversal foot-gun (defense BREAKS)", () => {
-    it("/sandbox/../outside/secret.txt is allowed by the gate AND read by the fs client", async () => {
-      // The attack: cap is for `<sandbox>`. Agent emits a path that
-      // CONTAINS the sandbox prefix as a substring (it's literally
-      // there before the `/..`) but resolves OUTSIDE the sandbox.
-      // Caveat substring-match fires; fs.readFile resolves `..` and
-      // reads the secret.
+describe("Round 10: encoding / normalization attacks against fs-sandbox [CLOSED v0.5]", () => {
+  describe("path-traversal is now denied at the gate", () => {
+    it("/sandbox/../outside/secret.txt is DENIED before fs.readFile runs", async () => {
+      // v0.5 closure: the Context provider runs `path.resolve` on
+      // agent-supplied path args, collapsing `..` BEFORE the verifier
+      // sees them. `<sandbox>/../outside/secret.txt` resolves to
+      // `<root>/outside/secret.txt`, which does not start with the
+      // canonical sandbox prefix.
       const traversalPath = `${h.sandbox}/../outside/secret.txt`;
-
-      const result = (await h.client.callTool("read_file", {
-        path: traversalPath,
-      })) as string;
-
-      // THE FINDING: out-of-sandbox secret read.
-      expect(result).toBe("OUT-OF-SANDBOX-SECRET");
-      // The call DID reach the underlying fs client (gate allowed it).
-      expect(h.underlying.log).toHaveLength(1);
-      expect((h.underlying.log[0]?.args as { path: string }).path).toBe(traversalPath);
+      await expect(
+        h.client.callTool("read_file", { path: traversalPath }),
+      ).rejects.toBeInstanceOf(CapabilityDeniedError);
+      expect(h.underlying.log).toEqual([]);
     });
 
-    it("/sandbox/legit/../../outside/secret.txt — multi-segment traversal also slips", async () => {
-      // Stronger demonstration: even after entering the sandbox, an
-      // attacker can climb back out. Substring `/sandbox/` is still
-      // present, caveat still fires.
+    it("/sandbox/legit/../../outside/secret.txt — multi-segment traversal is DENIED", async () => {
       const escapePath = `${h.sandbox}/legit/../../outside/secret.txt`;
-      const result = (await h.client.callTool("read_file", { path: escapePath })) as string;
-      expect(result).toBe("OUT-OF-SANDBOX-SECRET");
+      await expect(
+        h.client.callTool("read_file", { path: escapePath }),
+      ).rejects.toBeInstanceOf(CapabilityDeniedError);
+      expect(h.underlying.log).toEqual([]);
     });
 
-    it("/sandbox/././././../outside/secret.txt — `.` no-ops + `..` escape also slip", async () => {
-      // Idempotent path segments don't change the substring match
-      // outcome but stress the canonicalizer fix path.
+    it("/sandbox/././././../outside/secret.txt — `.` no-ops + `..` escape is DENIED", async () => {
       const noisy = `${h.sandbox}/./././../outside/secret.txt`;
-      const result = (await h.client.callTool("read_file", { path: noisy })) as string;
-      expect(result).toBe("OUT-OF-SANDBOX-SECRET");
+      await expect(
+        h.client.callTool("read_file", { path: noisy }),
+      ).rejects.toBeInstanceOf(CapabilityDeniedError);
+      expect(h.underlying.log).toEqual([]);
     });
   });
 
-  describe("encoding shapes that DO NOT slip — defense holds-by-accident", () => {
-    it("base64-encoded path string is denied (caveat sees the encoded form)", async () => {
-      // The cap matches against substring of the raw bytes. A base64
-      // string of `/etc/passwd` does NOT contain the sandbox-prefix
-      // substring, so caveat denies. This is a hold-by-accident:
-      // capnagent never decodes; it just doesn't match. If the
-      // underlying client DID decode base64 args, this would be a
-      // gap — operators wiring custom clients with auto-decoding
-      // would defeat the gate.
+  describe("encoding shapes — closure also covers percent-encoded traversal", () => {
+    it("base64-encoded path string is denied (the canonical path doesn't start with the sandbox)", async () => {
+      // The base64 of `/etc/passwd` is `L2V0Yy9wYXNzd2Q=`. After
+      // path.resolve against the CWD it becomes
+      // `<cwd>/L2V0Yy9wYXNzd2Q=`, which doesn't start with the
+      // sandbox prefix → denied. Behaviour is the same as before
+      // (the caveat denied for a different reason — substring miss);
+      // this version is structurally correct rather than coincidental.
       const b64 = Buffer.from("/etc/passwd", "utf8").toString("base64");
       await expect(h.client.callTool("read_file", { path: b64 })).rejects.toBeInstanceOf(
         CapabilityDeniedError,
@@ -148,22 +140,18 @@ describe("Round 10: encoding / normalization attacks against fs-sandbox", () => 
       expect(h.underlying.log).toEqual([]);
     });
 
-    it("percent-encoded `..` (`%2e%2e`) does NOT slip — fs.readFile doesn't URL-decode", async () => {
-      // %2e%2e in the path doesn't get decoded by Node's fs.readFile.
-      // The substring `/sandbox/` is still present, so caveat allows
-      // — but the fs client looks up a literal file with `%2e%2e` in
-      // its name. The file doesn't exist, so fs.readFile errors.
-      // Allowed by gate, but no exfil because the encoding doesn't
-      // round-trip through fs. Pin this so a future code change that
-      // adds URL-decoding (e.g. someone wiring a web-fs adapter)
-      // gets caught.
+    it("percent-encoded `..` (`%2e%2e`) is now DENIED at the gate", async () => {
+      // Originally an [INFO]: the gate let `%2e%2e` through (no URL-
+      // decode in capnagent or fs.readFile), and the call reached the
+      // underlying fs client where it failed with ENOENT. v0.5
+      // pre-decodes percent-encoding in the Context provider, so
+      // `%2e%2e` becomes `..` and is collapsed by `path.resolve`. The
+      // gate now denies before the underlying client ever sees the call.
       const percentEnc = `${h.sandbox}/%2e%2e/outside/secret.txt`;
-      // Caveat allows (substring fires); fs.readFile errors with ENOENT.
-      await expect(h.client.callTool("read_file", { path: percentEnc })).rejects.toThrow(
-        /ENOENT|no such file/i,
-      );
-      // The call DID reach the underlying client (the gate let it through).
-      expect(h.underlying.log).toHaveLength(1);
+      await expect(
+        h.client.callTool("read_file", { path: percentEnc }),
+      ).rejects.toBeInstanceOf(CapabilityDeniedError);
+      expect(h.underlying.log).toEqual([]);
     });
   });
 

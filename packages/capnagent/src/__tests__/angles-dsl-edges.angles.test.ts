@@ -341,15 +341,11 @@ describe("angle 5: special characters in string literals", () => {
     expect(out.kind).toBe("allowed");
   });
 
-  it("invalid escape \\q is rejected at parse time (denial reason includes 'parse')", async () => {
-    const out = await evalCaveat('arg.path matches "\\q"', {
-      ...baseCtx,
-      args: { path: "x" },
-    });
-    expect(out.kind).toBe("denied");
-    if (out.kind === "denied") {
-      expect(out.reason).toMatch(/parse/i);
-    }
+  it("[CLOSED v0.5] invalid escape \\q is rejected at ATTENUATE time (was: at verify)", async () => {
+    // v0.5: caveat predicates are pre-validated against the DSL parser
+    // at issuance / attenuate time, so unparseable predicates throw
+    // synchronously rather than chaining and producing denial-at-verify.
+    await expect(issueWithCaveat('arg.path matches "\\q"')).rejects.toThrow(/parse|invalid escape/i);
   });
 });
 
@@ -370,35 +366,20 @@ describe("angle 6: precedence & non-existent NOT operator", () => {
     expect(out.kind).toBe("allowed"); // implies AND-tighter precedence
   });
 
-  it("`NOT A` is rejected — there is no NOT operator (DSL fails closed)", async () => {
-    // The DSL has no negation operator. `NOT` is just an identifier
-    // that fails to match a reserved root and surfaces as
-    // UnknownIdent at evaluate time — but only AFTER the parser
-    // has accepted it as `NOT == something`. Since `NOT` here is
-    // followed by `caller == "x"` with no operator, the parse
-    // step itself fails.
-    const out = await evalCaveat('NOT caller == "agent:planner"', baseCtx);
-    expect(out.kind).toBe("denied");
-    if (out.kind === "denied") {
-      // Could be parse error (most likely) or unknown ident.
-      expect(out.reason).toMatch(/parse|unknown/i);
-    }
+  it("[CLOSED v0.5] `NOT A` is rejected at ATTENUATE time — there is no NOT operator", async () => {
+    // v0.5: pre-validation moves these rejections from verify-time to
+    // attenuate / caveat / issuance time. The closure is strictly
+    // stronger — a stray `NOT` in operator config now fails the
+    // deploy probe rather than producing a permanent-deny token.
+    await expect(issueWithCaveat('NOT caller == "agent:planner"')).rejects.toThrow();
   });
 
-  it("`NOT(A)` (negation-as-function syntax) is also rejected", async () => {
-    const out = await evalCaveat('NOT(caller == "agent:planner")', baseCtx);
-    expect(out.kind).toBe("denied");
-    if (out.kind === "denied") {
-      expect(out.reason).toMatch(/parse|unknown|eval/i);
-    }
+  it("[CLOSED v0.5] `NOT(A)` (negation-as-function syntax) is rejected at ATTENUATE time", async () => {
+    await expect(issueWithCaveat('NOT(caller == "agent:planner")')).rejects.toThrow();
   });
 
-  it("`!` prefix is rejected — DSL only has != as binary, no unary !", async () => {
-    const out = await evalCaveat('!caller == "agent:planner"', baseCtx);
-    expect(out.kind).toBe("denied");
-    if (out.kind === "denied") {
-      expect(out.reason).toMatch(/parse/i);
-    }
+  it("[CLOSED v0.5] `!` prefix is rejected at ATTENUATE time — DSL only has != as binary, no unary !", async () => {
+    await expect(issueWithCaveat('!caller == "agent:planner"')).rejects.toThrow();
   });
 });
 

@@ -68,9 +68,10 @@ export function issueOriginScopedGetCapability(args: {
     throw new Error("issueOriginScopedGetCapability: allowedOrigins must be non-empty");
   }
   for (const origin of allowedOrigins) {
-    if (!isExactOrigin(origin)) {
+    const reason = exactOriginRejectionReason(origin);
+    if (reason !== null) {
       throw new Error(
-        `issueOriginScopedGetCapability: ${JSON.stringify(origin)} is not an exact origin (expected scheme://host[:port] with no path)`,
+        `issueOriginScopedGetCapability: ${JSON.stringify(origin)} rejected: ${reason}`,
       );
     }
   }
@@ -91,26 +92,84 @@ export function issueOriginScopedGetCapability(args: {
 
 /**
  * True iff `s` is a fully-qualified origin: scheme + host (+ optional
- * port), with no path, no query, no fragment, no userinfo.
+ * port), with no path, no query, no fragment, no userinfo, and no
+ * IDN/punycode/mixed-script confusables in the host.
  *
- * The check rejects values that would surprise the caller: e.g. issuing
- * `"https://api.example.com/v1"` would mean the path is part of the
- * comparison string and never match (since the verifier sees
- * `URL.origin`, which strips paths).
+ * Kept for back-compat with callers that just want a boolean. New
+ * callers should use `exactOriginRejectionReason` (returns a string
+ * explanation, or `null` if accepted) — its diagnostics survive into
+ * issuance error messages.
  */
 function isExactOrigin(s: string): boolean {
+  return exactOriginRejectionReason(s) === null;
+}
+
+/**
+ * Validate that `s` is an allowlist-safe origin. Returns `null` if the
+ * input is acceptable; otherwise a human-readable reason for rejection
+ * suitable for surfacing in an error message at issuance time.
+ *
+ * v0.5 closes purple-team round 09 (IDN homograph in origin allowlist)
+ * by rejecting two foot-gun shapes the previous validator missed:
+ *
+ *   (a) Non-ASCII characters anywhere in the input string. Pasting
+ *       `https://аpi.example.com` (Cyrillic а) used to fail with the
+ *       opaque "not an exact origin" error; we now name the issue.
+ *   (b) Any DNS label that begins `xn--` (punycode-encoded IDN). This
+ *       is the realistic exploitation path — operator tooling
+ *       (browser, clipboard, JSON loader) silently canonicalizes a
+ *       Cyrillic-а URL into its ASCII punycode form, which then sails
+ *       through `URL.origin === s`. Rejecting `xn--` labels here
+ *       forces the operator to either choose an ASCII origin or, if
+ *       they really do want an IDN, to opt in through a separate path
+ *       (which v0.5 does not yet provide — see THREAT_MODEL.md §IDN).
+ *
+ * This is stricter than TR39 "Highly Restrictive": TR39 would allow
+ * punycode-encoded labels whose decoded Unicode is single-script.
+ * Implementing the full TR39 confusable-detection table is a bigger
+ * dependency than v0.5 wants; the practical compromise is to refuse
+ * IDN at the allowlist boundary entirely. The audit-finding called
+ * for "TR39 mixed-script detection in isExactOrigin"; rejecting all
+ * mixed-script and all punycode is the conservative supremum.
+ */
+function exactOriginRejectionReason(s: string): string | null {
+  // Foot-gun (a): non-ASCII characters in the input string.
+  // ASCII range is 0x00–0x7F. The DSL string literal layer also
+  // wouldn't tolerate them, but we reject earlier with a useful
+  // message so the operator sees "IDN/homograph" rather than a
+  // generic parse error.
+  for (let i = 0; i < s.length; i++) {
+    const cp = s.codePointAt(i);
+    if (cp === undefined || cp > 0x7f) {
+      return "input contains non-ASCII characters (likely IDN homograph / mixed-script confusable). Use the ASCII form of the origin, or pre-validate with a TR39 confusable check.";
+    }
+  }
+
   let u: URL;
   try {
     u = new URL(s);
   } catch {
-    return false;
+    return "not a parseable URL";
   }
-  if (u.username !== "" || u.password !== "") return false;
-  if (u.pathname !== "/" && u.pathname !== "") return false;
-  if (u.search !== "" || u.hash !== "") return false;
+  if (u.username !== "" || u.password !== "") return "URL contains userinfo (`user:pass@host`)";
+  if (u.pathname !== "/" && u.pathname !== "") return "URL contains a path";
+  if (u.search !== "" || u.hash !== "") return "URL contains a query string or fragment";
   // `URL.origin` strips trailing slashes and removes default ports;
   // require the input to already be in that canonical form.
-  return s === u.origin;
+  if (s !== u.origin) {
+    return `URL is not in canonical-origin form (got ${JSON.stringify(s)}, canonical is ${JSON.stringify(u.origin)})`;
+  }
+  // Foot-gun (b): hostname contains punycode-encoded IDN labels.
+  // Each DNS label is dot-separated; per IDNA-2008, an IDN label is
+  // ASCII-encoded as `xn--…`. Detecting this prefix is reliable
+  // because `xn--` is the IDNA prefix and never appears in the
+  // canonical form of an unencoded ASCII label.
+  for (const label of u.hostname.split(".")) {
+    if (label.startsWith("xn--")) {
+      return "hostname contains a punycode-encoded IDN label (xn--…) — the most common way an IDN homograph slips into an allowlist after operator tooling canonicalizes a Cyrillic / mixed-script URL. v0.5 refuses IDN at this boundary; allowlist the ASCII form, or open a separate API path for IDN if your service genuinely needs it.";
+    }
+  }
+  return null;
 }
 
 export interface GuardedHttpClient {

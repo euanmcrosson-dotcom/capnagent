@@ -42,6 +42,16 @@ type HmacSha256 = Hmac<Sha256>;
 /// version `N` rejects any receipt whose `version != N`.
 pub const RECEIPT_SCHEMA_VERSION: u8 = 1;
 
+/// Minimum byte length accepted for an `Auditor` HMAC key.
+///
+/// Lower bound from purple-team angle B.3: a deployment that derived its
+/// audit key from an unset env var would silently produce forgeable
+/// receipts (HMAC accepts any key length per RFC 2104, including zero).
+/// 16 bytes is the floor below which the security argument breaks; 32+
+/// from a CSPRNG is still the production recommendation. Enforced at
+/// construction so the failure surfaces at startup, not at verify time.
+pub const MIN_AUDIT_KEY_LEN: usize = 16;
+
 /// A signed record of a single verification decision.
 ///
 /// Receipts are append-only. Once written to an [`AuditLog`] they should
@@ -110,10 +120,24 @@ pub struct Auditor {
 }
 
 impl Auditor {
-    /// Construct an auditor from a raw key. Any byte length is accepted —
-    /// HMAC handles short and long keys consistently — but production
-    /// callers SHOULD use a 32-byte key from a CSPRNG.
+    /// Construct an auditor from a raw key.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `key.len() < MIN_AUDIT_KEY_LEN` (16). HMAC itself accepts
+    /// keys of any length per RFC 2104 — including zero — but a sub-16-byte
+    /// audit key is cryptographically catastrophic and the most common way
+    /// to produce one is a misconfigured deployment (audit key derived from
+    /// an unset env var). Failing fast at construction makes the
+    /// misconfiguration loud at startup rather than silent at verify time.
+    /// Production callers SHOULD use a 32-byte key from a CSPRNG.
     pub fn new(key: &[u8]) -> Self {
+        assert!(
+            key.len() >= MIN_AUDIT_KEY_LEN,
+            "Auditor: key length {} < MIN_AUDIT_KEY_LEN ({}); see audit.rs",
+            key.len(),
+            MIN_AUDIT_KEY_LEN,
+        );
         Self { key: key.to_vec() }
     }
 

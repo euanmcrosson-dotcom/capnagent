@@ -102,6 +102,16 @@ impl CapabilityBuilder {
     }
 
     /// Finalize the capability.
+    ///
+    /// Note: the Rust core does NOT enforce a minimum caveat count.
+    /// Many integration tests that pre-date v0.5 build no-caveat caps
+    /// to exercise non-caveat machinery (revocation, hok, replay
+    /// protection) in isolation. The v0.5 closure for angle C.5
+    /// (empty-caveat = god-mode) is enforced one layer up — the WASM
+    /// `CapabilityBuilder::build` pre-checks `caveat_count() == 0` and
+    /// throws on the JS side. Direct Rust callers should pre-check
+    /// via [`CapabilityBuilder::caveat_count`] if they want the same
+    /// guarantee in their own integration code.
     pub fn build(self) -> Capability {
         Capability {
             identifier: self.identifier,
@@ -109,5 +119,13 @@ impl CapabilityBuilder {
             caveats: self.caveats,
             signature: self.signature,
         }
+    }
+
+    /// Number of caveats currently attached. Used by the WASM wrapper
+    /// to pre-check `build()`'s C.5 closure before consuming the
+    /// builder, so a JS caller gets a clean `Error` for the
+    /// god-mode-token case rather than a silent admit-everything cap.
+    pub fn caveat_count(&self) -> usize {
+        self.caveats.len()
     }
 }

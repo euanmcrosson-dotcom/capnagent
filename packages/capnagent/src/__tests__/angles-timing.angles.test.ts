@@ -190,38 +190,31 @@ describe("Angle 3 — Far-future timestamp (5-digit year)", () => {
     expect(r.outcome.kind).toBe("allowed");
   });
 
-  it("[FINDING] 5-digit year @99999-12-31 is REJECTED at verify-time (parse error masked as caveat failure)", async () => {
-    // FINDING: The RFC3339 parser is hard-coded to read year as exactly
-    // 4 ASCII bytes, so `@99999-12-31T...` fails at the year boundary.
-    // The caveat builder accepts the predicate string at issuance time
-    // (no validation), and the parse error only surfaces at verify time
-    // — as a Denied outcome with a parse-error reason. Operators
-    // attempting a "century-long" cap will silently get a perma-denied
-    // capability that looks well-formed by the chain but fails every
-    // call. Impact: low (denial, not allow) but a footgun.
+  it("[CLOSED v0.5] 5-digit year @99999-12-31 is rejected at ISSUE time (was: at verify)", async () => {
+    // Originally [FINDING]: the RFC3339 parser only accepts 4-digit
+    // years, and the caveat builder admitted the predicate without
+    // validation, so a `@99999-...` cap silently became a permanent-
+    // deny token. v0.5 closure: predicate strings are pre-validated
+    // against the DSL parser at issuance, so the operator who tries
+    // a "century-long" cap gets an immediate named error — not a
+    // permadenied token they have to debug at runtime.
     await init();
-    const cap = Issuer.fromKey(ROOT_KEY)
-      .issue("far-future-5")
-      .caveat(`tool == "x"`)
-      .caveat("now <= @99999-12-31T23:59:59Z")
-      .build();
-    const ctx: Context = {
-      caller: "agent:test",
-      tool: "x",
-      args: {},
-      nowMs: TODAY_MS,
-    };
-    const r = new Verifier(ROOT_KEY).verifyWithContext(cap, ctx, new Auditor(AUDIT_KEY));
-    expect(r.outcome.kind).toBe("denied");
-    if (r.outcome.kind === "denied") {
-      // Reason mentions "parse error" because parse_rfc3339 errored.
-      expect(r.outcome.reason).toMatch(/caveat parse error/);
-    }
+    expect(() =>
+      Issuer.fromKey(ROOT_KEY)
+        .issue("far-future-5")
+        .caveat(`tool == "x"`)
+        .caveat("now <= @99999-12-31T23:59:59Z")
+        .build(),
+    ).toThrow(/parse|invalid timestamp|99999/);
   });
 
-  it("year sign matters: -1 (1 BC) is rejected — `-` consumed as separator (PIN)", async () => {
-    // The parser reads year as 4 bytes; a leading `-` would shift the
-    // separator byte. Any "negative year" is rejected by the parser.
+  it("negative year @-001-01-01 (1 BC) parses but produces a DENIAL — `now <= 1BC` is false today", async () => {
+    // Empirical pin: the RFC3339 parser does accept a `-001` year
+    // (parse_int_exact on `-001` returns i32 = -1), so the predicate
+    // is well-formed. At verify, `now <= @-001-...` evaluates to
+    // false against any present-day clock and the receipt is denied.
+    // Not a parse failure — a logical denial. Pinned so a future
+    // change to year handling surfaces here.
     await init();
     const cap = Issuer.fromKey(ROOT_KEY)
       .issue("year-negative")

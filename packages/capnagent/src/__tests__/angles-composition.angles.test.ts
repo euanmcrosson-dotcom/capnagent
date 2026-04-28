@@ -561,67 +561,42 @@ describe("Angle 8 — Issuer reuse across multiple issuances is leak-free", () =
 // Angle 9 — Empty-caveat cap (the "naked" cap)
 // ---------------------------------------------------------------------------
 
-describe("Angle 9 — Empty-caveat cap (naked cap) verifies and matches every Context", () => {
-  it("[FINDING] Issuer.issue('naked').build() with NO caveats is a valid cap that ALLOWS every call — operator foot-gun if they forget to add caveats", async () => {
+describe("Angle 9 — Empty-caveat cap (naked cap) verifies and matches every Context [CLOSED v0.5]", () => {
+  it("[CLOSED v0.5] Issuer.issue('naked').build() THROWS — a no-caveat token is god-mode authorization", async () => {
+    // Originally [FINDING]: a no-caveat cap was a valid token whose
+    // verifier admitted every context. v0.5 closure: `build()` throws
+    // a JS-side `Error` when the caveat list is empty, naming angle
+    // C.5 in the message. Operators who forget to attach an expiry /
+    // tool / caller caveat now get caught at issuance.
     await init();
-    const naked = Issuer.fromKey(ROOT_KEY).issue("naked").build();
-
-    const verifier = new Verifier(ROOT_KEY);
-    const auditor = new Auditor(AUDIT_KEY);
-
-    // Chain check passes (it's a legitimately-issued cap).
-    expect(() => verifier.verify(naked)).not.toThrow();
-
-    // Every context is allowed — there are no caveats to fail.
-    const callers = ["agent:planner", "agent:rogue", "anyone-at-all", ""];
-    const tools = ["http.get", "http.post", "shell.exec", "anything"];
-    for (const caller of callers) {
-      for (const tool of tools) {
-        const r = verifier.verifyWithContext(
-          naked,
-          ctx({ caller, tool, args: { whatever: true } }),
-          auditor,
-        );
-        expect(r.outcome.kind).toBe("allowed");
-      }
-    }
-
-    // [FINDING]: a cap with no caveats is the "god mode" of capnagent.
-    // The chain is intact, so every verify passes. The wire form is
-    // smaller than a normal cap (no caveats array), which makes a
-    // reviewer skim past it. There is NO API-level enforcement of
-    // "every cap must have at least one caveat" or "every cap must
-    // have an expiry caveat". An operator who calls `.build()` before
-    // adding `.caveat(FUTURE)` ships a cap that never expires AND
-    // permits every call. This is the #1 highest-impact composition
-    // foot-gun in the surface.
-    const wire = decodeToken(naked.serialize());
-    expect(wire.caveats).toEqual([]);
+    expect(() => Issuer.fromKey(ROOT_KEY).issue("naked").build()).toThrow();
   });
 
-  it("a defensively-attenuated naked cap denies what its attenuations forbid; a SEPARATELY-held naked cap (no attenuations) still permits everything", async () => {
+  it("[CLOSED v0.5] error message names the cause", async () => {
+    await init();
+    expect(() => Issuer.fromKey(ROOT_KEY).issue("x").build()).toThrow(
+      /no.?caveat|god.?mode|C\.5|zero/i,
+    );
+  });
+
+  it("a defensively-attenuated cap denies what its attenuations forbid; the parent must still have ≥1 caveat (regression)", async () => {
     await init();
     const verifier = new Verifier(ROOT_KEY);
     const auditor = new Auditor(AUDIT_KEY);
 
-    // Defensive holder narrows their copy.
+    // The parent now requires ≥1 caveat; we attach a far-future
+    // expiry so it admits every context (other than the ones the
+    // attenuations rule out).
     const narrowed = Issuer.fromKey(ROOT_KEY)
       .issue("naked-attn")
+      .caveat(FUTURE)
       .build()
-      .attenuate(`tool == "http.get"`)
-      .attenuate(FUTURE);
+      .attenuate(`tool == "http.get"`);
 
     const allowed = verifier.verifyWithContext(narrowed, ctx({ tool: "http.get" }), auditor);
     expect(allowed.outcome.kind).toBe("allowed");
     const denied = verifier.verifyWithContext(narrowed, ctx({ tool: "http.post" }), auditor);
     expect(denied.outcome.kind).toBe("denied");
-
-    // BUT — a SECOND, never-attenuated copy held by a less-defensive
-    // attacker is still god-mode. Attenuation is opt-in; capnagent
-    // does not retroactively constrain copies of the parent.
-    const reckless = Issuer.fromKey(ROOT_KEY).issue("naked-attn").build();
-    const recklessR = verifier.verifyWithContext(reckless, ctx({ tool: "shell.exec" }), auditor);
-    expect(recklessR.outcome.kind).toBe("allowed");
   });
 
   it("[FINDING] Capability.attenuate(...) on the JS wrapper CONSUMES the receiver — using the original handle after attenuation throws 'null pointer passed to rust' instead of a typed CapabilityError; this is a wasm-bindgen ownership leak in the public TS surface", async () => {

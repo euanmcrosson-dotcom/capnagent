@@ -27,7 +27,7 @@
 //! unary      ::= comparison | "(" or_expr ")"
 //! comparison ::= ident op value
 //! ident      ::= bare_ident ("." bare_ident)*
-//! op         ::= "==" | "!=" | "<=" | ">=" | "<" | ">" | "matches"
+//! op         ::= "==" | "!=" | "<=" | ">=" | "<" | ">" | "matches" | "starts_with"
 //! value      ::= string | number | timestamp
 //! string     ::= '"' ( char | '\\' ('n'|'t'|'\\'|'"') )* '"'
 //! number     ::= integer fractional? ("_" unit)?
@@ -137,6 +137,12 @@ enum Op {
     Gt,
     Ge,
     Matches,
+    /// True iff lhs (a string) starts with rhs (a string). Defends against
+    /// the round-07 lateral-substring foot-gun: `arg.path matches "/sandbox"`
+    /// admits `/sandbox` AND `/etc/sandbox-bypass` because `matches` is
+    /// substring containment, not anchored. `arg.path starts_with "/sandbox"`
+    /// is anchored.
+    StartsWith,
 }
 
 impl Op {
@@ -149,6 +155,7 @@ impl Op {
             Op::Gt => ">",
             Op::Ge => ">=",
             Op::Matches => "matches",
+            Op::StartsWith => "starts_with",
         }
     }
 }
@@ -433,15 +440,20 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_op(&mut self) -> Result<Op, DslError> {
-        // Try the keyword `matches` first. It must be followed by a non-ident
-        // character so we don't munch an identifier prefix.
+        // Try keyword operators first. Each must be followed by a non-ident
+        // character so we don't munch an identifier prefix. `starts_with`
+        // is checked before `matches` only because the prefix "starts" is
+        // a clean disambiguation; ordering doesn't matter cryptographically.
         let rest = self.rest();
-        if let Some(after) = rest.strip_prefix("matches") {
-            let next = after.chars().next();
-            let is_word_continuation = next.is_some_and(|c| c.is_ascii_alphanumeric() || c == '_');
-            if !is_word_continuation {
-                self.pos += "matches".len();
-                return Ok(Op::Matches);
+        for (kw, op) in [("starts_with", Op::StartsWith), ("matches", Op::Matches)] {
+            if let Some(after) = rest.strip_prefix(kw) {
+                let next = after.chars().next();
+                let is_word_continuation =
+                    next.is_some_and(|c| c.is_ascii_alphanumeric() || c == '_');
+                if !is_word_continuation {
+                    self.pos += kw.len();
+                    return Ok(op);
+                }
             }
         }
 
@@ -472,7 +484,7 @@ impl<'a> Parser<'a> {
             }
         }
         Err(DslError::Parse(format!(
-            "expected operator (==, !=, <=, >=, <, >, matches) at byte {}",
+            "expected operator (==, !=, <=, >=, <, >, matches, starts_with) at byte {}",
             self.pos
         )))
     }
@@ -751,6 +763,16 @@ fn apply_op(op: Op, lhs: &Value, rhs: &Value) -> Result<bool, DslError> {
                 // pull in a new dep.
                 Ok(a.contains(b.as_str()))
             }
+            Op::StartsWith => {
+                // Anchored prefix. v0.5 added this because `matches` is
+                // substring-contains and cannot express prefix-only intent
+                // (round 07 foot-gun: a path-prefix caveat written with
+                // `matches` admits any path that contains the prefix
+                // anywhere — `/sandbox/x` AND `/etc/sandbox-bypass`).
+                // `starts_with` is anchored at byte 0, so prefix caveats
+                // mean exactly what they look like.
+                Ok(a.starts_with(b.as_str()))
+            }
             Op::Lt | Op::Le | Op::Gt | Op::Ge => Err(DslError::TypeMismatch {
                 expected: "number or timestamp on left for ordering operator".into(),
                 got: format!("string vs string with `{}`", op.as_str()),
@@ -798,9 +820,9 @@ fn ordered_to_bool(op: Op, ord: Ordering) -> Result<bool, DslError> {
         Op::Le => ord != Ordering::Greater,
         Op::Gt => ord == Ordering::Greater,
         Op::Ge => ord != Ordering::Less,
-        Op::Matches => {
+        Op::Matches | Op::StartsWith => {
             return Err(DslError::TypeMismatch {
-                expected: "string for `matches`".into(),
+                expected: format!("string for `{}`", op.as_str()),
                 got: "non-string operand".into(),
             })
         }

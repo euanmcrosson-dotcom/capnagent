@@ -225,11 +225,15 @@ describe("Angle 4 — Unicode (CJK) in caller / tool", () => {
     expect(() => auditor.verify(r)).not.toThrow();
   });
 
-  it("attenuate() with CJK predicate text round-trips", async () => {
-    const cap = (await freshCap("buy-cjk-pred")).attenuate('商品 == "本"');
-    const t = cap.serialize();
-    const reparsed = Capability.parse(t);
-    expect(reparsed.serialize()).toBe(t);
+  it("[CLOSED v0.5] attenuate() with non-ASCII predicate identifier is rejected at attenuate time", async () => {
+    // Original test: CJK identifier `商品` round-tripped through serialize/parse.
+    // v0.5: the WASM `attenuate` pre-validates against the caveat DSL parser,
+    // which only accepts ASCII identifiers. Non-ASCII idents now throw at
+    // attenuate time rather than silently being chained and failing at
+    // verify. CJK / emoji / accented-char *string-literal values* (the rhs
+    // of a comparison) are still fine — only the identifier path is ASCII.
+    const cap = await freshCap("buy-cjk-pred");
+    expect(() => cap.attenuate('商品 == "本"')).toThrow();
   });
 });
 
@@ -404,20 +408,34 @@ describe("Angle 7 — Negative / extreme timestampMs handling", () => {
 describe("Angle 8 — Long caveat chain (1000)", () => {
   it("chain HMAC stays correct across 1000 attenuations", async () => {
     await init();
-    let cap = Issuer.fromKey(ROOT_KEY).issue("buy-long-chain").build();
+    // v0.5: build() requires ≥1 caveat (closes C.5) and attenuate
+    // requires a parseable predicate (closes B.2). The seed caveat
+    // gives us a non-zero starting point; the loop attaches valid
+    // ones.
+    let cap = Issuer.fromKey(ROOT_KEY)
+      .issue("buy-long-chain")
+      .caveat(`caveat_seed == "v"`)
+      .build();
     for (let i = 0; i < 1000; i++) {
       cap = cap.attenuate(`caveat_${i} == "v"`);
     }
-    // Just constructing must not throw.
     const verifier = new Verifier(ROOT_KEY);
     expect(() => verifier.verify(cap)).not.toThrow();
   });
 
   it("1000-caveat token serializes and round-trips byte-identically", async () => {
     await init();
-    let cap = Issuer.fromKey(ROOT_KEY).issue("buy-long-roundtrip").build();
+    // v0.5: same as above. The original test used `c${i}` (a bare
+    // identifier, not a comparison) — those are unparseable and now
+    // rejected at attenuate time. Switch to a real comparison so the
+    // chain length stress-test continues to exercise the same code
+    // path.
+    let cap = Issuer.fromKey(ROOT_KEY)
+      .issue("buy-long-roundtrip")
+      .caveat(`seed == "v"`)
+      .build();
     for (let i = 0; i < 1000; i++) {
-      cap = cap.attenuate(`c${i}`);
+      cap = cap.attenuate(`c${i} == "v"`);
     }
     const t1 = cap.serialize();
     const reparsed = Capability.parse(t1);
@@ -432,41 +450,39 @@ describe("Angle 8 — Long caveat chain (1000)", () => {
 // ---------------------------------------------------------------------------
 
 describe("Angle 9 — Empty caveat predicate", () => {
-  it('[FINDING] cap.attenuate("") accepts the empty predicate and produces an unevaluable caveat', async () => {
-    // FINDING: `attenuate("")` succeeds. The serialized cap carries
-    // `{predicate:""}`. At `verifyWithContext` time, the empty
-    // predicate is fed into the caveat DSL parser, which returns a
-    // parse error and the verifier denies the call with a parse-error
-    // reason. So the empty predicate is not a chain-break — it's a
-    // permanent-deny attractor: any caller who appends "" to a cap
-    // converts it into a token that can never authorize anything,
-    // even though `verify()` (chain-only) still passes. There is no
-    // structural rejection at attenuation time, no warning.
-    //
-    // Impact: silent corruption. A misbehaving (or hostile) caller in
-    // the chain can effectively brick a delegated capability by
-    // appending "" — it still passes chain check, looks valid in the
-    // wire format, but every `verifyWithContext` call denies. Easy to
-    // mistake for "the verifier is broken" during incident response.
+  it('[CLOSED v0.5] cap.attenuate("") REJECTS at attenuation time with a parse error', async () => {
+    // Originally [FINDING]: the empty predicate chained silently and
+    // produced a permanent-deny token. v0.5 closure: the WASM wrapper
+    // pre-validates the predicate parses as caveat DSL before chaining.
+    // Empty / whitespace / unparseable predicates throw at attenuate
+    // time so a hostile (or buggy) caller in a delegation chain cannot
+    // brick a downstream cap.
     const cap = await freshCap("buy-empty-pred");
-    const attenuated = cap.attenuate("");
-    expect(attenuated.serialize()).not.toBe("");
+    expect(() => cap.attenuate("")).toThrow();
+    expect(() => cap.attenuate("   ")).toThrow();
+    expect(() => cap.attenuate("not a predicate")).toThrow();
+    expect(() => cap.attenuate("amount <=")).toThrow(); // missing rhs
+  });
 
-    const auditor = new Auditor(AUDIT_KEY);
-    const verifier = new Verifier(ROOT_KEY);
-    // Chain-only verify still passes.
-    expect(() => verifier.verify(attenuated)).not.toThrow();
+  it("[CLOSED v0.5] CapabilityBuilder.caveat is also validated at issuance", async () => {
+    await init();
+    expect(() =>
+      Issuer.fromKey(ROOT_KEY).issue("x").caveat("").build(),
+    ).toThrow();
+    expect(() =>
+      Issuer.fromKey(ROOT_KEY).issue("x").caveat("garbage with spaces").build(),
+    ).toThrow();
+  });
 
-    // Full verify produces a denial, not a throw — that's the
-    // permanent-deny shape.
-    const ctx: Context = {
-      caller: "x",
-      tool: "http.post",
-      args: {},
-      nowMs: FROZEN_MS,
-    };
-    const r = verifier.verifyWithContext(attenuated, ctx, auditor);
-    expect(r.outcome.kind).toBe("denied");
+  it("valid predicates still attenuate without error (regression)", async () => {
+    // Each `freshCap` call gives a separate handle — `attenuate`
+    // consumes the receiver in wasm-bindgen, so we can't reuse one
+    // cap across multiple assertions.
+    expect(async () => (await freshCap("v1")).attenuate(`tool == "x"`)).not.toThrow();
+    expect(async () => (await freshCap("v2")).attenuate("arg.amount <= 50")).not.toThrow();
+    expect(async () =>
+      (await freshCap("v3")).attenuate(`tool == "a" OR tool == "b"`),
+    ).not.toThrow();
   });
 });
 
@@ -475,57 +491,33 @@ describe("Angle 9 — Empty caveat predicate", () => {
 // ---------------------------------------------------------------------------
 
 describe("Angle 10 — Auditor with zero-byte key", () => {
-  it("[FINDING] Auditor accepts an empty key (HMAC RFC 2104 allows it, but zero-entropy keys are dangerous)", async () => {
-    // FINDING: `new Auditor(new Uint8Array(0))` succeeds — HMAC accepts
-    // any key length per RFC 2104, including zero. The Rust core
-    // explicitly documents this with an `expect("HMAC accepts keys of
-    // any length")`. A zero-byte HMAC key is cryptographically
-    // catastrophic: any attacker who guesses "the audit key is empty"
-    // can mint forged receipts with no work. There is no minimum-key-
-    // length warning at construction.
+  it("[CLOSED v0.5] Auditor REJECTS keys < 16 bytes at construction", async () => {
+    // Originally a [FINDING]: `new Auditor(new Uint8Array(0))` succeeded
+    // because HMAC accepts any key length per RFC 2104 (including zero).
+    // A zero-byte HMAC key is cryptographically catastrophic — any
+    // attacker who guesses "the audit key is empty" mints forged
+    // receipts with no work. The most realistic way to land a zero-byte
+    // key in production is a misconfigured deployment that derived the
+    // key from an unset env var.
     //
-    // Impact: encoding gap → potential signature break in deployment.
-    // Production callers MUST use ≥32 bytes from a CSPRNG (the doc
-    // says SHOULD), but the API does not enforce this. A
-    // misconfigured deployment that derives the audit key from an
-    // empty env var will silently produce forgeable receipts.
+    // v0.5 closure: `MIN_AUDIT_KEY_LEN` (16) is enforced at the WASM
+    // constructor and surfaces as a JS-side `Error`. The Rust core
+    // additionally panics on a sub-16-byte key, so direct Rust callers
+    // cannot land in this state either. 32 bytes from a CSPRNG remains
+    // the production recommendation.
     await init();
-    const emptyAuditor = new Auditor(new Uint8Array(0));
-
-    const cap = await freshCap("buy-emptykey");
-    const ctx: Context = {
-      caller: "x",
-      tool: "http.post",
-      args: {},
-      nowMs: FROZEN_MS,
-    };
-    const verifier = new Verifier(ROOT_KEY);
-    const r = verifier.verifyWithContext(cap, ctx, emptyAuditor);
-
-    // The receipt verifies under the same empty key — proves the
-    // empty-key path is fully wired, no early-out.
-    expect(() => emptyAuditor.verify(r)).not.toThrow();
-
-    // But ANY attacker who guesses "empty key" can verify too — i.e.
-    // the audit guarantee collapses. Demonstrate by constructing a
-    // second empty-key Auditor (mock attacker) and verifying the
-    // same receipt successfully under it.
-    const attackerAuditor = new Auditor(new Uint8Array(0));
-    expect(() => attackerAuditor.verify(r)).not.toThrow();
+    expect(() => new Auditor(new Uint8Array(0))).toThrow();
+    expect(() => new Auditor(new Uint8Array([0x42]))).toThrow();
+    expect(() => new Auditor(new Uint8Array(15))).toThrow();
+    // Boundary: 16 bytes is the minimum; everything ≥16 succeeds.
+    expect(() => new Auditor(new Uint8Array(16))).not.toThrow();
+    expect(() => new Auditor(new Uint8Array(32))).not.toThrow();
   });
 
-  it("a 1-byte key is also accepted (same shape, slightly more entropy)", async () => {
+  it("[CLOSED v0.5] error message names the offending length", async () => {
     await init();
-    const a = new Auditor(new Uint8Array([0x42]));
-    const cap = await freshCap("buy-1byte");
-    const ctx: Context = {
-      caller: "x",
-      tool: "http.post",
-      args: {},
-      nowMs: FROZEN_MS,
-    };
-    const r = new Verifier(ROOT_KEY).verifyWithContext(cap, ctx, a);
-    expect(() => a.verify(r)).not.toThrow();
+    expect(() => new Auditor(new Uint8Array(0))).toThrow(/16|too short/i);
+    expect(() => new Auditor(new Uint8Array(8))).toThrow(/16|too short/i);
   });
 
   it("a wrong-key auditor REJECTS receipts signed by a different key", async () => {

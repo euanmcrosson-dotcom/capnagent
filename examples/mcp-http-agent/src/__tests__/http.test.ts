@@ -237,12 +237,14 @@ describe("origin-scoped HTTP agent", () => {
     });
 
     it("rejects an origin with a path", () => {
+      // v0.5: error message names the specific reason instead of the
+      // generic "not an exact origin" — operators can self-diagnose.
       expect(() =>
         issueOriginScopedGetCapability({
           allowedOrigins: ["https://api.example.com/v1"],
           caller: CALLER,
         }),
-      ).toThrow(/exact origin/);
+      ).toThrow(/path/);
     });
 
     it("rejects an origin with userinfo", () => {
@@ -251,7 +253,7 @@ describe("origin-scoped HTTP agent", () => {
           allowedOrigins: ["https://user:pass@api.example.com"],
           caller: CALLER,
         }),
-      ).toThrow(/exact origin/);
+      ).toThrow(/userinfo/);
     });
 
     it("rejects a malformed origin", () => {
@@ -260,7 +262,7 @@ describe("origin-scoped HTTP agent", () => {
           allowedOrigins: ["not-a-url"],
           caller: CALLER,
         }),
-      ).toThrow(/exact origin/);
+      ).toThrow(/parseable|URL/);
     });
   });
 

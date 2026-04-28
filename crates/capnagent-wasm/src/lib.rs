@@ -75,10 +75,18 @@ pub struct CapabilityBuilder(Option<core::CapabilityBuilder>);
 #[wasm_bindgen]
 impl CapabilityBuilder {
     /// Append a caveat. Returns `this` so calls can be chained.
-    pub fn caveat(mut self, predicate: String) -> Self {
+    ///
+    /// v0.5: pre-validates that `predicate` parses as caveat DSL before
+    /// chaining the HMAC. Closes purple-team angle B.2 — an unparseable
+    /// predicate (including the empty string) used to chain silently
+    /// and produce a token whose verifier always denied. Throws a
+    /// JS-side `Error` on parse failure with the parser's own message.
+    pub fn caveat(mut self, predicate: String) -> Result<CapabilityBuilder, JsError> {
+        core::caveat_dsl::parse(&predicate)
+            .map_err(|e| JsError::new(&format!("invalid caveat predicate: {e}")))?;
         let inner = self.0.take().expect("CapabilityBuilder already consumed");
         self.0 = Some(inner.caveat(predicate));
-        self
+        Ok(self)
     }
 
     /// Bind this capability to an ed25519 public key (raw 32 bytes), the
@@ -105,9 +113,21 @@ impl CapabilityBuilder {
     }
 
     /// Finalise the capability.
-    pub fn build(mut self) -> Capability {
+    ///
+    /// v0.5: throws if no caveats have been attached (closes angle C.5
+    /// — a no-caveat token is god-mode authorization). Pre-checks the
+    /// caveat count via the inner builder so the JS caller gets a
+    /// clean `Error` instead of an opaque WASM panic.
+    pub fn build(mut self) -> Result<Capability, JsError> {
         let inner = self.0.take().expect("CapabilityBuilder already consumed");
-        Capability(inner.build())
+        if inner.caveat_count() == 0 {
+            return Err(JsError::new(
+                "Capability has zero caveats — a no-caveat token is god-mode authorization. \
+                 Attach at least one caveat (e.g. `now <= @<expiry>`) before calling build(). \
+                 See angle C.5.",
+            ));
+        }
+        Ok(Capability(inner.build()))
     }
 }
 
@@ -133,8 +153,17 @@ impl Capability {
     }
 
     /// Append a caveat, producing a strictly narrower capability.
-    pub fn attenuate(self, predicate: String) -> Capability {
-        Capability(self.0.attenuate(predicate))
+    ///
+    /// v0.5: pre-validates `predicate` parses as caveat DSL. Closes
+    /// purple-team angle B.2 — the empty string (and any other
+    /// unparseable predicate) used to chain silently and produce a
+    /// token whose verifier always denied. Any holder in a chain
+    /// could thereby brick a delegated cap. Now throws a JS-side
+    /// `Error` instead.
+    pub fn attenuate(self, predicate: String) -> Result<Capability, JsError> {
+        core::caveat_dsl::parse(&predicate)
+            .map_err(|e| JsError::new(&format!("invalid attenuation predicate: {e}")))?;
+        Ok(Capability(self.0.attenuate(predicate)))
     }
 
     /// Public identifier carried by the capability.
@@ -586,9 +615,22 @@ pub struct Auditor(core::Auditor);
 
 #[wasm_bindgen]
 impl Auditor {
+    /// Construct an Auditor from a raw key.
+    ///
+    /// Throws a JS-side `Error` if `key.length < 16` (closes purple-team
+    /// angle B.3: a misconfigured deployment that derived its audit key
+    /// from an unset env var would silently produce forgeable receipts).
+    /// Production callers should pass at least 32 bytes from a CSPRNG.
     #[wasm_bindgen(constructor)]
-    pub fn new(key: &[u8]) -> Self {
-        Self(core::Auditor::new(key))
+    pub fn new(key: &[u8]) -> Result<Auditor, JsError> {
+        if key.len() < core::MIN_AUDIT_KEY_LEN {
+            return Err(JsError::new(&format!(
+                "Auditor key too short: got {} bytes, minimum is {}",
+                key.len(),
+                core::MIN_AUDIT_KEY_LEN
+            )));
+        }
+        Ok(Self(core::Auditor::new(key)))
     }
 
     /// Recompute the receipt signature and reject on mismatch.

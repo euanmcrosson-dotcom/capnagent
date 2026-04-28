@@ -221,60 +221,76 @@ afterEach(() => {
   // No fs cleanup needed — pure-string mock harness.
 });
 
-describe("Round 07: fs-sandbox prefix foot-gun", () => {
-  describe("the foot-gun (positive hypothesis — expected to FAIL: bug allows lateral reads)", () => {
-    it("lateral path containing the prefix as substring is ALLOWED (the bug: should be denied)", async () => {
-      // `/etc/srv/app-leaked-secret` is NOT a child of `/srv/app`,
-      // but its absolute path contains `/srv/app` as a substring.
-      // With the substring `matches` operator the caveat fires and
-      // the read is permitted.
-      const result = (await h.client.callTool("read_file", { path: LATERAL })) as string;
-      expect(result).toBe("PRETEND LATERAL SECRET — bug allows this");
+describe("Round 07: fs-sandbox prefix foot-gun [CLOSED v0.5]", () => {
+  describe("the foot-gun is closed: lateral / shadow / embedded paths are now denied", () => {
+    it("lateral path containing the prefix as substring is DENIED", async () => {
+      // v0.5 closure: the issued caveat uses anchored `starts_with`
+      // (not substring `matches`) and the prefix carries a trailing
+      // separator, so `/etc/srv/app-leaked-secret` does not satisfy
+      // `arg.path starts_with "/srv/app/"`. The Context provider
+      // additionally canonicalizes any path-shaped arg, so encoding
+      // tricks (round 10) collapse to the same comparison.
+      await expect(
+        h.client.callTool("read_file", { path: LATERAL }),
+      ).rejects.toBeInstanceOf(CapabilityDeniedError);
 
-      // The visceral evidence: the underlying client DID see the
-      // call, even though the path is lexically outside the sandbox.
-      expect(h.underlying.log.map((e) => e.tool)).toEqual(["read_file"]);
-      expect((h.underlying.log[0]?.args as { path: string }).path).toBe(LATERAL);
+      // The underlying client never saw the call.
+      expect(h.underlying.log).toEqual([]);
 
-      // Receipt records `allowed`, not `denied`. This is the receipt
-      // we capture in the regen-evidence script as the bug evidence.
+      // Receipt records `denied`.
       expect(h.receipts).toHaveLength(1);
-      expect((h.receipts[0] as { outcome: { kind: string } }).outcome.kind).toBe("allowed");
+      expect((h.receipts[0] as { outcome: { kind: string } }).outcome.kind).toBe("denied");
     });
 
-    it("trailing-character collision (`/srv/app-shadow/...`) is ALLOWED (the bug)", async () => {
-      // `/srv/app-shadow/secret` starts with the sandbox prefix
-      // followed by `-` rather than a separator. A path-aware
-      // prefix-match would reject; substring containment allows.
-      const result = (await h.client.callTool("read_file", {
-        path: TRAILING_SHADOW,
-      })) as string;
-      expect(result).toBe("PRETEND TRAILING-SHADOW SECRET");
-
-      expect(h.underlying.log.map((e) => e.tool)).toEqual(["read_file"]);
+    it("trailing-character collision (`/srv/app-shadow/...`) is DENIED", async () => {
+      // The trailing-separator on the canonical prefix is what closes
+      // this case: `/srv/app-shadow/secret` does not start with
+      // `/srv/app/` because byte 8 is `-`, not `/`.
+      await expect(
+        h.client.callTool("read_file", { path: TRAILING_SHADOW }),
+      ).rejects.toBeInstanceOf(CapabilityDeniedError);
+      expect(h.underlying.log).toEqual([]);
     });
 
-    it("embedded-prefix path (`/var/log/srv/app/backup`) is ALLOWED (the bug)", async () => {
-      // The sandbox prefix appears IN THE MIDDLE of a longer
-      // unrelated absolute path. Substring containment doesn't
-      // care where in the string the match occurs.
-      const result = (await h.client.callTool("read_file", { path: EMBEDDED })) as string;
-      expect(result).toBe("PRETEND EMBEDDED-PATH SECRET");
-
-      expect(h.underlying.log.map((e) => e.tool)).toEqual(["read_file"]);
+    it("embedded-prefix path (`/var/log/srv/app/backup`) is DENIED", async () => {
+      // Anchored prefix: the sandbox-prefix substring appearing
+      // mid-string no longer satisfies the caveat. The path resolves
+      // to `/var/log/srv/app/backup` (already absolute, no `..`),
+      // which does not start with `/srv/app/`.
+      await expect(
+        h.client.callTool("read_file", { path: EMBEDDED }),
+      ).rejects.toBeInstanceOf(CapabilityDeniedError);
+      expect(h.underlying.log).toEqual([]);
     });
 
-    it("list_directory on a lateral dir is ALLOWED — same bug, different tool clause", async () => {
-      // The cap's read clause is repeated for `list_directory` and
-      // `directory_tree`. The substring foot-gun applies to all
-      // three identically.
-      const entries = (await h.client.callTool("list_directory", {
-        path: LATERAL,
-      })) as Array<{ name: string }>;
-      expect(entries.map((e) => e.name)).toEqual(["PRETEND-SECRET"]);
+    it("list_directory on a lateral dir is DENIED — same closure, different tool clause", async () => {
+      // The closure applies uniformly to all three read clauses
+      // (`read_file` / `list_directory` / `directory_tree`).
+      await expect(
+        h.client.callTool("list_directory", { path: LATERAL }),
+      ).rejects.toBeInstanceOf(CapabilityDeniedError);
+      expect(h.underlying.log).toEqual([]);
+    });
 
-      // The underlying client saw the list call.
-      expect(h.underlying.log.map((e) => e.tool)).toEqual(["list_directory"]);
+    it("path-traversal escape (`/srv/app/../etc/passwd`) is DENIED — closes round 10", async () => {
+      // The Context provider runs `path.resolve` on agent-supplied
+      // path args, which collapses `..` segments BEFORE the verifier
+      // evaluates the caveat. `/srv/app/../etc/passwd` resolves to
+      // `/etc/passwd`, which does not start with `/srv/app/`.
+      await expect(
+        h.client.callTool("read_file", { path: "/srv/app/../etc/passwd" }),
+      ).rejects.toBeInstanceOf(CapabilityDeniedError);
+      expect(h.underlying.log).toEqual([]);
+    });
+
+    it("percent-encoded traversal (`/srv/app/%2e%2e/etc/passwd`) is DENIED — closes round 10", async () => {
+      // The Context provider tries `decodeURIComponent` before
+      // canonicalizing, so `%2e%2e` becomes `..` and is then
+      // collapsed by `path.resolve`.
+      await expect(
+        h.client.callTool("read_file", { path: "/srv/app/%2e%2e/etc/passwd" }),
+      ).rejects.toBeInstanceOf(CapabilityDeniedError);
+      expect(h.underlying.log).toEqual([]);
     });
   });
 

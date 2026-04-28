@@ -43,7 +43,8 @@ pub use verifier::{pop_challenge_for, Verified, Verifier, VerifyError};
 // deliberately NOT re-exported — callers reach them through
 // `capnagent_core::caveat_dsl::*` to keep the crate root narrow.
 pub use audit::{
-    AuditError, AuditLog, Auditor, ContextSummary, Outcome, Receipt, RECEIPT_SCHEMA_VERSION,
+    AuditError, AuditLog, Auditor, ContextSummary, Outcome, Receipt, MIN_AUDIT_KEY_LEN,
+    RECEIPT_SCHEMA_VERSION,
 };
 pub use caveat_dsl::{DslError, Predicate};
 pub use context::{Context, ContextBuilder};

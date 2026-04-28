@@ -12,19 +12,23 @@
  *     mentions them, so the caveat-evaluation gate refuses them.
  *
  * The capability is one DSL predicate that composes the read-only
- * tool list AND the path-prefix check via `OR` / `AND`:
+ * tool list AND the path-prefix check via `OR` / `AND`. v0.5 uses the
+ * anchored `starts_with` operator (NOT `matches`, which is substring
+ * containment and the source of round 07's lateral-substring foot-gun):
  *
- *     (tool == "read_file"      AND arg.path matches "<sandbox>")
- *  OR (tool == "list_directory" AND arg.path matches "<sandbox>")
- *  OR (tool == "directory_tree" AND arg.path matches "<sandbox>")
+ *     (tool == "read_file"      AND arg.path starts_with "<sandbox>")
+ *  OR (tool == "list_directory" AND arg.path starts_with "<sandbox>")
+ *  OR (tool == "directory_tree" AND arg.path starts_with "<sandbox>")
  *
- * Note on `matches`: the v0.1 caveat DSL implements `matches` as substring
- * containment, not regex. That's why the sandbox prefix should be a path
- * component unique enough that no path could legitimately contain it (the
- * demo uses `os.tmpdir()` + a random suffix). For production deployments
- * that need exact-prefix semantics, normalize `arg.path` inside the
- * verifier-controlled `Context` before evaluation.
+ * The Context provider canonicalizes `arg.path` (via `path.resolve`)
+ * before the verifier sees it. That collapses `..`, decodes percent-
+ * encoding, and normalizes separators — closing rounds 07 + 10. An
+ * agent that emits `/sandbox/../etc/passwd` has `arg.path` rewritten
+ * to `/etc/passwd` BEFORE the caveat runs; the prefix check then
+ * fails closed.
  */
+
+import * as path from "node:path";
 
 import { Auditor, type Capability, type Context, Issuer, Verifier, init } from "@capnagent/core";
 import { type WrapOptions, wrapMCPClient } from "@capnagent/mcp";
@@ -71,15 +75,41 @@ export function issueSandboxReadCapability(args: {
       `issueSandboxReadCapability: sandboxPrefix must be a unique path-like prefix (got ${JSON.stringify(sandboxPrefix)})`,
     );
   }
-  // Embed the prefix into the caveat. We escape backslashes (Windows) and
-  // double-quotes; the DSL's string literal syntax doesn't support
-  // arbitrary escapes, so a path containing a `"` would fail to parse —
-  // that's a correctness property, not a limitation worth working around.
-  const escapedPrefix = sandboxPrefix.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-  const readPredicate =
-    `(tool == "read_file"      AND arg.path matches "${escapedPrefix}") ` +
-    `OR (tool == "list_directory" AND arg.path matches "${escapedPrefix}") ` +
-    `OR (tool == "directory_tree" AND arg.path matches "${escapedPrefix}")`;
+  // Canonicalize the prefix the same way the Context provider will
+  // canonicalize agent-supplied paths, so the prefix the issuer encodes
+  // and the values the verifier compares are in the same shape. We
+  // build TWO forms:
+  //
+  //   - `prefixDir` — the path with a trailing separator. Used in the
+  //     `starts_with` clause so child paths (e.g. `<sandbox>/file.txt`)
+  //     match while sibling-trailing-character collisions
+  //     (e.g. `<sandbox>-shadow/...`) do NOT.
+  //   - `prefixExact` — the path with NO trailing separator. Used in
+  //     an `==` clause so listing the sandbox root itself
+  //     (`list_directory(<sandbox>)`) is allowed without bringing back
+  //     the trailing-shadow foot-gun.
+  //
+  // The caveat is `starts_with "<prefixDir>" OR == "<prefixExact>"`,
+  // which is exactly "this path is the sandbox root, or a child of
+  // it" — anchored, separator-aware, and free of the substring foot-
+  // gun.
+  const resolved = path.resolve(sandboxPrefix);
+  const prefixExact = resolved.endsWith(path.sep) ? resolved.slice(0, -1) : resolved;
+  const prefixDir = prefixExact + path.sep;
+  // The DSL's string literal syntax doesn't support arbitrary escapes,
+  // so we encode backslashes (Windows) and double-quotes; a path
+  // containing an unescapable byte fails to parse, which is the
+  // correctness property we want (operator gets a clear error, not a
+  // silent permissive cap).
+  const esc = (s: string) => s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  const dirPart = esc(prefixDir);
+  const exactPart = esc(prefixExact);
+  // v0.5: `starts_with` is anchored at byte 0 — closes round 07's
+  // lateral-substring foot-gun where `matches` would admit any path
+  // containing the prefix anywhere (e.g. `/etc/<sandbox>-bypass`).
+  const insideClause = (tool: string) =>
+    `(tool == "${tool}" AND (arg.path starts_with "${dirPart}" OR arg.path == "${exactPart}"))`;
+  const readPredicate = `${insideClause("read_file")} OR ${insideClause("list_directory")} OR ${insideClause("directory_tree")}`;
 
   return Issuer.fromKey(ROOT_KEY)
     .issue("fs.read")
@@ -115,7 +145,7 @@ export async function createGuardedFsClient(args: {
     context: (toolName: string, callArgs: unknown): Context => ({
       caller: args.caller,
       tool: toolName,
-      args: callArgs,
+      args: canonicalizePathArgs(callArgs),
       nowMs: Date.now(),
     }),
     onReceipt: (r) => {
@@ -128,4 +158,52 @@ export async function createGuardedFsClient(args: {
   // already reflects unknown property accesses through, so `wrapped.log`
   // returns the same array as `underlying.log`.
   return { client: wrapped, underlying, receipts };
+}
+
+/**
+ * Rewrite any `path`-shaped argument the agent supplied so the value
+ * the verifier sees is the canonical absolute form — `..` collapsed,
+ * separators normalized, percent-encoding decoded.
+ *
+ * Closes purple-team rounds 07 (sandbox-prefix lateral-substring
+ * foot-gun) and 10 (encoding / path-traversal): an agent that emits
+ * `{ path: "/sandbox/../etc/passwd" }` has its path rewritten to
+ * `/etc/passwd` BEFORE the caveat runs; the anchored `starts_with`
+ * prefix check then fails closed against the sandbox root.
+ *
+ * The canonicalization is intentionally aggressive:
+ *
+ * - `path.resolve(p)` against the process CWD collapses `..` and `.`
+ *   segments and produces an absolute path. Relative inputs are
+ *   resolved against CWD; this is the same treatment any underlying
+ *   filesystem call would give them, so the caveat sees the same
+ *   path the syscall would.
+ * - We try `decodeURIComponent` first to unwrap `%2e%2e`-style
+ *   traversal that some agents produce when they URL-quote path
+ *   segments. Decode failures (invalid `%xx`) leave the input
+ *   untouched and let `path.resolve` proceed; either way the result
+ *   is checked against the prefix.
+ * - We do NOT call `realpath` or otherwise hit the filesystem.
+ *   Symlinks are out of scope for this layer (THREAT_MODEL.md notes
+ *   they are operator responsibility — a symlink inside the sandbox
+ *   pointing out is a deployment foot-gun, not an engine bug).
+ *
+ * Non-string `path` is returned untouched so non-fs args (e.g.
+ * `recursive: true`) flow through unchanged.
+ */
+function canonicalizePathArgs(callArgs: unknown): unknown {
+  if (typeof callArgs !== "object" || callArgs === null) return callArgs;
+  const a = callArgs as Record<string, unknown>;
+  const rawPath = a["path"];
+  if (typeof rawPath !== "string") return callArgs;
+
+  let decoded = rawPath;
+  try {
+    decoded = decodeURIComponent(rawPath);
+  } catch {
+    // Malformed percent-encoding — leave as-is and let `path.resolve`
+    // do its best. The eventual prefix check is still anchored.
+  }
+  const canonical = path.resolve(decoded);
+  return { ...a, path: canonical };
 }
