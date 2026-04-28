@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "capabilityIdentifier": "fs.read",
+  "caveats": [
+    {
+      "predicate": "caller == \"agent:fs\""
+    },
+    {
+      "predicate": "now <= @2099-01-01T00:00:00Z"
+    },
+    {
+      "predicate": "(tool == \"read_file\"      AND arg.path matches \"/srv/app\") OR (tool == \"list_directory\" AND arg.path matches \"/srv/app\") OR (tool == \"directory_tree\" AND arg.path matches \"/srv/app\")"
+    }
+  ],
+  "contextSummary": {
+    "caller": "agent:fs",
+    "tool": "read_file",
+    "argsHash": "94a306b39d648b1eb1eb4c784745db31b6e6222697c36b3dc0e2399510a004f0"
+  },
+  "outcome": {
+    "kind": "allowed"
+  },
+  "timestampMs": 1777340233397,
+  "signature": "5763023a519ffde3088a36a676959d0532b2e4aa9f91c5f1608d31dfa45a79d7"
+}

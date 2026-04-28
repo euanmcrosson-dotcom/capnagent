@@ -1,0 +1,75 @@
+{
+  "_annotation": {
+    "scenario": "Operator-trap: a hok-bound capability is in use, but the operator forgot to call `verifier.withNonceStore(...)`. Round 02's defense is silently absent. v0.4's `hasNonceStore()` introspection method now lets operators detect this BEFORE relying on the (non-existent) replay defense. This evidence captures both halves: the gap (replay allowed when no store) and the fix-when-installed (replay denied with the locked reason).",
+    "gap_expected_outcome": "denied",
+    "gap_observed_outcome": "allowed",
+    "fixed_expected_outcome": "denied",
+    "fixed_observed_outcome": "denied",
+    "fixed_observed_reason": "proof replay detected",
+    "detection_mechanism": "verifier.hasNonceStore() returns false on the gap-scenario verifier and true on the fixed-scenario verifier. The deployment-readiness postcondition `assert(verifier.hasNonceStore())` catches the forgotten install.",
+    "finding": "Round 08 CLOSED on Run 1 — v0.4's `hasNonceStore()` shipped before this round was authored, so the operator-config gap is detectable from day one. The round documents the failure mode AND validates the fix simultaneously. See docs/purple-team/08-forgot-nonce-store.md."
+  },
+  "gap_receipt": {
+    "version": 1,
+    "capabilityIdentifier": "buy-no-nonce-store",
+    "caveats": [
+      {
+        "predicate": "caller == \"agent:planner\""
+      },
+      {
+        "predicate": "tool == \"checkout.purchase\""
+      },
+      {
+        "predicate": "arg.merchant == \"amazon.com\""
+      },
+      {
+        "predicate": "arg.amount <= 50"
+      },
+      {
+        "predicate": "now <= @2099-01-01T00:00:00Z"
+      }
+    ],
+    "contextSummary": {
+      "caller": "agent:planner",
+      "tool": "checkout.purchase",
+      "argsHash": "e52fbb7e3d37b667d250b2691ae61a2f5040a72a32b25289ba41f02f5fccc8e6"
+    },
+    "outcome": {
+      "kind": "allowed"
+    },
+    "timestampMs": 1700000000000,
+    "signature": "04c78a03a1e860fc3e9070344c1f1e47599a07a4b58eb5fe732272c62b550d4d"
+  },
+  "fixed_receipt": {
+    "version": 1,
+    "capabilityIdentifier": "buy-no-nonce-store",
+    "caveats": [
+      {
+        "predicate": "caller == \"agent:planner\""
+      },
+      {
+        "predicate": "tool == \"checkout.purchase\""
+      },
+      {
+        "predicate": "arg.merchant == \"amazon.com\""
+      },
+      {
+        "predicate": "arg.amount <= 50"
+      },
+      {
+        "predicate": "now <= @2099-01-01T00:00:00Z"
+      }
+    ],
+    "contextSummary": {
+      "caller": "agent:planner",
+      "tool": "checkout.purchase",
+      "argsHash": "e52fbb7e3d37b667d250b2691ae61a2f5040a72a32b25289ba41f02f5fccc8e6"
+    },
+    "outcome": {
+      "kind": "denied",
+      "reason": "proof replay detected"
+    },
+    "timestampMs": 1700000000000,
+    "signature": "5eff61599d7e5b64a586dc89b4dcd19e51f972429a98a92e4563f111674bed7f"
+  }
+}

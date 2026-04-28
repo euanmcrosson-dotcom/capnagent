@@ -37,6 +37,9 @@ receipt evidence per round.
 | 04 | Revocation race (revoked-capability replay)    | OWASP A01, CWE-672   | holds-with-caveat | [`round_04_revocation_race.purple.rs`](crates/capnagent-core/tests/round_04_revocation_race.purple.rs) — 11/11 pass (Rust) |
 | 05 | Cross-origin exfil via http-agent              | OWASP LLM01, CWE-441 | holds-with-caveat | [`cross-origin-exfil.purple.test.ts`](examples/mcp-http-agent/src/__tests__/cross-origin-exfil.purple.test.ts) — 11/11 pass |
 | 06 | Silent-bypass on revocation-list install       | OWASP A04, CWE-693   | Run 1: BREAKS → Run 2: CLOSED (v0.4 introspection methods shipped) | [`silent-bypass-revocation.purple.test.ts`](packages/capnagent/src/__tests__/silent-bypass-revocation.purple.test.ts) — 7/7 pass |
+| 07 | fs-sandbox prefix foot-gun                     | OWASP A04, CWE-22    | **BREAKS** (substring `matches` not path-aware; fix queued) | [`sandbox-prefix-footgun.purple.test.ts`](examples/mcp-fs-agent/src/__tests__/sandbox-prefix-footgun.purple.test.ts) — 9/9 pass |
+| 08 | Forgot NonceStore on hok-bound caps            | OWASP A04, A07       | CLOSED (v0.4 `hasNonceStore()` enables detection) | [`forgot-nonce-store.purple.test.ts`](packages/capnagent/src/__tests__/forgot-nonce-store.purple.test.ts) — 6/6 pass |
+| 09 | IDN homograph in origin allowlist              | CWE-1007, OWASP A04  | **BREAKS** (`isExactOrigin` accepts punycode silently; TR39 fix queued) | [`idn-homograph-origin.purple.test.ts`](examples/mcp-http-agent/src/__tests__/idn-homograph-origin.purple.test.ts) — 13/13 pass |
 
 Each round produces:
 

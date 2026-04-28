@@ -18,6 +18,7 @@
     "regen-purple-evidence-02": "tsx src/bin/regen-purple-evidence-02.ts",
     "regen-purple-evidence-03": "tsx src/bin/regen-purple-evidence-03.ts",
     "regen-purple-evidence-06": "tsx src/bin/regen-purple-evidence-06.ts",
+    "regen-purple-evidence-08": "tsx src/bin/regen-purple-evidence-08.ts",
     "lint": "biome check src",
     "typecheck": "tsc --noEmit"
   },

@@ -119,6 +119,9 @@ the structural claim; blue-first dominates here.
 | 04 | Revocation race (revoked-capability replay)      | OWASP A01, CWE-672     | CLOSED 2026-04-27     | 2026-10-27     | chain ✓ revoke ✗              |
 | 05 | Cross-origin exfil via http-agent                | OWASP LLM01, CWE-441   | CLOSED 2026-04-27     | 2026-10-27     | chain ✓ caveat ✗ (origin)     |
 | 06 | Silent-bypass on revocation-list install (operator trap) | OWASP A04, CWE-693, CWE-754 | CLOSED 2026-04-28 (Run 1 BREAKS, Run 2 CLOSED post-v0.4) | 2026-10-28 | chain ✓ revoke (DETECTABLE) caveat ✓ |
+| 07 | fs-sandbox prefix foot-gun (operator misconfig)  | OWASP A04, CWE-22      | **BREAKS** 2026-04-27 (substring `matches` is not path-aware; fix queued) | 2026-10-27 | chain ✓ caveat ✓ (incorrectly allows lateral path) |
+| 08 | Forgot NonceStore on hok-bound caps (operator trap) | OWASP A04, A07         | CLOSED 2026-04-27 (Run 1; v0.4 `hasNonceStore()` enables detection) | 2026-10-27 | dual: without store: replay (NOT INSTALLED) allowing replay; with store: replay ✗ |
+| 09 | IDN homograph in origin allowlist (operator trap) | CWE-1007, OWASP A04    | **BREAKS** 2026-04-27 (`isExactOrigin` accepts punycode silently; TR39 fix queued) | 2026-10-27 | chain ✓ caveat ✓ (allows attacker-host punycode) |
 
 (Status enum: `OPEN`, `PARTIAL`, `CLOSED — date`. Gates symbols:
 `✓` gate checked + passed; `✗` gate checked + denied (this is

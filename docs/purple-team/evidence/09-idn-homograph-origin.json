@@ -1,0 +1,103 @@
+{
+  "round": 9,
+  "title": "IDN homograph in origin allowlist",
+  "status": "BREAKS",
+  "summary": "The http-agent's `issueOriginScopedGetCapability` validator accepts a punycode-form IDN homograph (`xn--pi-6kc.example.com`) in `allowedOrigins` without any IDN-confusable check. An operator who was tricked into pasting the punycode of a Cyrillic-а homograph (perhaps via clipboard/CLI/JSON-loader canonicalization of a visually-disguised attacker URL) issues a cap that allows agent calls to the attacker host AND denies calls to the legitimate ASCII origin they believed they were allowing.",
+  "empirical": {
+    "homograph_unicode_input": "https://аpi.example.com",
+    "homograph_unicode_codepoints": [
+      "U+0068",
+      "U+0074",
+      "U+0074",
+      "U+0070",
+      "U+0073",
+      "U+003A",
+      "U+002F",
+      "U+002F",
+      "U+0430",
+      "U+0070",
+      "U+0069",
+      "U+002E",
+      "U+0065",
+      "U+0078",
+      "U+0061",
+      "U+006D",
+      "U+0070",
+      "U+006C",
+      "U+0065",
+      "U+002E",
+      "U+0063",
+      "U+006F",
+      "U+006D"
+    ],
+    "url_origin_returns": "https://xn--pi-6kc.example.com",
+    "legitimate_ascii_origin": "https://api.example.com",
+    "homograph_equals_ascii": false
+  },
+  "issuance": {
+    "allowedOrigins_passed": [
+      "https://xn--pi-6kc.example.com"
+    ],
+    "issuance_threw": false,
+    "issuance_warning": null,
+    "cap_built_successfully": true
+  },
+  "cap_behavior": {
+    "homograph_call_url": "https://аpi.example.com/data",
+    "homograph_call_outcome": "allowed",
+    "homograph_call_receipt": {
+      "version": 1,
+      "capabilityIdentifier": "http.get",
+      "caveats": [
+        {
+          "predicate": "caller == \"agent:http\""
+        },
+        {
+          "predicate": "now <= @2099-01-01T00:00:00Z"
+        },
+        {
+          "predicate": "tool == \"http.get\" AND (arg.origin == \"https://xn--pi-6kc.example.com\")"
+        }
+      ],
+      "contextSummary": {
+        "caller": "agent:http",
+        "tool": "http.get",
+        "argsHash": "6a1a44af0675bcc93a34c8d8c93ed744c19164e369020f4beec2d3d9bb1a85eb"
+      },
+      "outcome": {
+        "kind": "allowed"
+      },
+      "timestampMs": 1777340223916,
+      "signature": "0456511458469b32f7d7b900ae8c9f3d2b75902b7bc09c6bd3e155e4fd0cace6"
+    },
+    "legitimate_ascii_call_url": "https://api.example.com/data",
+    "legitimate_ascii_call_outcome": "denied",
+    "legitimate_ascii_call_receipt": {
+      "version": 1,
+      "capabilityIdentifier": "http.get",
+      "caveats": [
+        {
+          "predicate": "caller == \"agent:http\""
+        },
+        {
+          "predicate": "now <= @2099-01-01T00:00:00Z"
+        },
+        {
+          "predicate": "tool == \"http.get\" AND (arg.origin == \"https://xn--pi-6kc.example.com\")"
+        }
+      ],
+      "contextSummary": {
+        "caller": "agent:http",
+        "tool": "http.get",
+        "argsHash": "57bdb028fc2fc7559a397c9420684c8b61c4c06b6e0d6c435ebec6841d27c01c"
+      },
+      "outcome": {
+        "kind": "denied",
+        "reason": "caveat failed: tool == \"http.get\" AND (arg.origin == \"https://xn--pi-6kc.example.com\")"
+      },
+      "timestampMs": 1777340224072,
+      "signature": "b46b0e56e38a52dec22faef5f2c0215d06f73ab2c3f556ea11efc076908bf7fd"
+    }
+  },
+  "conclusion": "The validator's structural origin check (`s === u.origin`, no path/userinfo/etc) is necessary but not sufficient. Without an IDN-confusable check it cannot distinguish a legitimate IDN registration from a homograph attack. Recommended fix is documented in the round doc; trade-off is between ASCII-only labels (simple, blocks legitimate IDNs) and TR39-aware mixed-script/confusable detection (permissive, more complex)."
+}

@@ -13,6 +13,7 @@
     "demo": "tsx src/bin/demo.ts",
     "demo:live-mcp": "tsx src/bin/demo-live-mcp.ts",
     "regen-purple-evidence": "tsx src/bin/regen-purple-evidence.ts",
+    "regen-purple-evidence-07": "tsx src/bin/regen-purple-evidence-07.ts",
     "lint": "biome check src",
     "typecheck": "tsc --noEmit"
   },

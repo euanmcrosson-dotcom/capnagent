@@ -9,6 +9,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Purple-team rounds 07, 08, 09 — failure-mode tests of existing
+  defenses, three rounds in one parallel-worktree pass. The corpus
+  matures from "5 rounds all holding" to "9 rounds: 6 closed, 3
+  surfacing real defects with engine fixes queued."**
+
+  - **Round 07 — fs-sandbox prefix foot-gun (round 01 failure mode).**
+    **Status: BREAKS.** Operator passes a sandbox prefix that LOOKS
+    like a path-prefix but, because `matches` is substring-
+    containment, lets the cap also permit reads to *unrelated*
+    directories sharing the substring. Concrete: cap with
+    `sandboxPrefix: "/srv/app"` allows `read_file({ path:
+    "/etc/srv/app-leaked-secret" })` — captured receipt has
+    `outcome.kind === "allowed"` for the lateral path. The existing
+    `issueSandboxReadCapability` validator is a "looks-vaguely-pathlike"
+    gate (length ≥ 8 + must contain `/` or `\`), not a path-prefix-
+    realism gate. Recommended fix is two-part: (1) add a `starts_with`
+    DSL operator anchored at position 0 + requiring trailing
+    separator, (2) extend the Context provider to canonicalize
+    `arg.path` (resolve symlinks, eliminate `..`, normalize
+    separators) before caveat evaluation. PoC at
+    `examples/mcp-fs-agent/src/__tests__/sandbox-prefix-footgun.purple.test.ts`
+    — 9 deterministic tests, all passing (the "BREAKS" is the
+    scenario outcome).
+
+  - **Round 08 — forgot NonceStore on hok-bound caps (round 02 failure
+    mode). Status: CLOSED on Run 1.** v0.4's `hasNonceStore()`
+    introspection (shipped before this round was even authored)
+    enables operators to detect the operator-config gap. Round
+    captures a dual-narrative in one Run-1 entry: WITHOUT NonceStore
+    a byte-identical replay against an hok-bound cap is silently
+    ALLOWED; WITH NonceStore the same replay is correctly DENIED
+    with reason "proof replay detected". Both receipts captured
+    side-by-side as `gap_receipt` / `fixed_receipt` keys in the
+    evidence JSON. PoC at
+    `packages/capnagent/src/__tests__/forgot-nonce-store.purple.test.ts`
+    — 6 tests, all passing.
+
+  - **Round 09 — IDN homograph in origin allowlist (round 05 failure
+    mode). Status: BREAKS.** Operator copies an attacker-supplied URL
+    containing a Cyrillic а (U+0430) into the origin allowlist.
+    Empirical finding from the round: Node's `URL.origin` canonicalizes
+    the homograph to its punycode form (`https://xn--pi-6kc.example.com`),
+    and `isExactOrigin` accepts the punycode silently — so any
+    operator clipboard / JSON-loader / config-pipeline path that
+    auto-canonicalizes unicode → punycode lands the cap with the
+    attacker host. The same cap then ALLOWS calls to the homograph
+    host AND DENIES calls to the legitimate ASCII origin. Both
+    receipts captured side-by-side. Recommended fix is path B (TR39
+    mixed-script confusable detection) over path A (ASCII-only),
+    because path A rejects every legitimate IDN deployment. PoC at
+    `examples/mcp-http-agent/src/__tests__/idn-homograph-origin.purple.test.ts`
+    — 13 tests, all passing.
+
+  Test count growth: 185 → 213 TS tests (+28 across rounds 07, 08, 09).
+  Engine v0.5 work queue opened: path-canonicalization in fs-agent's
+  Context provider + DSL `starts_with` operator (round 07); TR39
+  mixed-script detection in `isExactOrigin` (round 09).
+
 - **v0.4 — Verifier introspection methods (`hasRevocationList`,
   `hasNonceStore`, `revocationListIssuedAtMs`).** Closes the gap
   surfaced by purple-team round 06: a silent-failed
