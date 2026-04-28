@@ -38,8 +38,12 @@ I've been building a public purple-team corpus for MCP / agent tool
 surfaces. Each round writes a falsifiable security claim, constructs
 an attack designed to falsify it, and either confirms the defense
 holds (with a signed denial receipt as evidence) or documents how
-it broke. Round 01 is in — tool-description injection / cross-server
-confused deputy. Repo: github.com/euanmcrosson-dotcom/capnagent.
+it broke. 10 rounds closed so far (tool-poisoning, hok-replay, IDN
+homograph, fs path-traversal, etc), and we just ran 4 parallel agents
+adversarially against our own engine — they found 17 issues, 4 HIGH
+severity (sub-ulp numeric coercion bypass, empty-attenuation brick,
+zero-byte audit key, empty-caveat god-mode token). v0.5 closes all
+four. Repo: github.com/euanmcrosson-dotcom/capnagent.
 
 I'm looking to add a round against a real production stack. If your
 agent surface is interesting, happy to do the integration + write
@@ -59,21 +63,33 @@ surfaces and looking for adversarial review. Methodology is
 blue-first: each round writes a falsifiable claim, the red side
 constructs an attack to falsify it, the PoC simulates worst-case
 (model fully cooperates with injection), and the receipt is the
-audit-loggable evidence. Round 01 (tool-description injection
-against MCP filesystem) is in: 8/8 PoC tests pass, defense holds
-when capability is path-bounded, residual risk explicitly
-documented. Repo: github.com/euanmcrosson-dotcom/capnagent;
-methodology in docs/purple-team/.
+audit-loggable evidence. 10 rounds closed: tool-poisoning / cross-
+server confused deputy, hok-replay, capability broadening, revocation
+race, cross-origin exfil, IDN homograph, fs-sandbox path-traversal,
+encoding attacks. 6 hold-with-caveat, 4 documented BREAKS with fixes
+shipped or queued.
 
-Engine is a Rust capability-token library: macaroon-style HMAC
-chain, ed25519 holder-of-key (DPoP shape), NonceStore replay
-protection, signed revocation list, caveat DSL with boolean
-composition. ~17 kHz/core verifications. unsafe_code = forbid;
-220+ Rust tests including no-broaden proptests.
+Then we ran 4 parallel agents adversarially against our own engine:
+36 angles, 17 findings, 4 HIGH severity defects in our own code —
+sub-ulp f64 caveat-bypass, empty-attenuation produces a silent brick
+token, zero-byte HMAC key accepted by the auditor, empty-caveat cap
+authorizes every context. v0.5 closes all four. The point is that
+defects this severe are findable in a public loop — and the corpus
+is what makes the loop legible.
 
-If you have 30 min to read docs/purple-team/01-... and find one
-thing I got wrong, I'll send a $50 gift card / whatever. Adversarial
-review is the part I can't do solo.
+Repo: github.com/euanmcrosson-dotcom/capnagent
+Methodology + rounds: docs/purple-team/
+Threat model: docs/THREAT_MODEL.md
+
+Engine: macaroon-style HMAC chain, ed25519 holder-of-key (DPoP shape),
+NonceStore replay protection, signed revocation list, caveat DSL with
+boolean composition. ~17 kHz/core verifications. unsafe_code = forbid;
+230+ Rust tests including no-broaden proptests, ~318 TS tests.
+
+If you have 30 min to read one round + the angles findings and find
+one thing I got wrong, I'll send a $50 gift card / whatever. The
+strongest review I could get right now is somebody breaking round NN
+or designing round 11.
 ```
 
 ## Template 3 — DM to someone running an MCP server
@@ -88,9 +104,11 @@ malicious.
 
 Built a public purple-team harness for this exact surface: each
 round documents a defense being tested against an attack scenario,
-with runnable PoCs and signed denial receipts as evidence. Round 01
-is the tool-poisoning case against the official
-@modelcontextprotocol/server-filesystem. Repo:
+with runnable PoCs and signed denial receipts as evidence. 10 rounds
+closed including the tool-poisoning case against the official
+@modelcontextprotocol/server-filesystem, plus a parallel-agent
+adversarial review of our own engine that surfaced 4 HIGH severity
+defects (we're closing them in v0.5). Repo:
 github.com/euanmcrosson-dotcom/capnagent.
 
 Worth a 15-min call if you've thought about this surface? I'd

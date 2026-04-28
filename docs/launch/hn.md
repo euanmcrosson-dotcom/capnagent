@@ -14,34 +14,49 @@ Show HN: Capnagent – a public purple-team harness for MCP and AI agent tools
 
 ```
 Hi HN — capnagent is a public purple-team harness for MCP servers
-and AI-agent tool surfaces. It treats prompt injection as a
-confused-deputy attack and proves it: each round in the corpus is an
-adversarial scenario (e.g. tool-description injection / cross-server
-confused deputy), a falsifiable security claim, a runnable PoC that
-simulates the worst case (model fully cooperates with the
-injection), and a signed denial receipt as evidence. Reviewers can
-clone the repo and verify every claim by running the test suite —
-no prose-trust required.
+and AI-agent tool surfaces, plus the Rust capability-token engine
+underneath. Methodology is blue-first: every round writes a
+falsifiable security claim, then constructs an attack designed to
+falsify it. The PoC simulates the worst case (the model has been
+fully compromised by the injection and emits exactly the calls the
+attacker described), and the verifier's denial — or admission — is
+recorded as a signed audit receipt. Reviewers verify by running the
+suite; no prose-trust required.
 
-Round 01 is in: tool-description injection against an MCP filesystem
-server. 8/8 PoC tests pass; the structural defense holds when the
-issued capability is tightly path-bounded (and the round explicitly
-documents the residual risk: loose capabilities still lose;
-in-sandbox secrets are operator responsibility). Rounds 02-05
-queued: replay attack on hok-bound caps, capability broadening,
-cross-origin exfil via http-agent, shell-allowlist bypass.
+The interesting thing isn't that we built defenses — it's that we
+red-teamed them. 10 rounds are closed (cross-server confused deputy,
+hok-replay, capability broadening, revocation race, cross-origin
+exfil, IDN homograph, path-traversal, etc). Then we ran an "angles"
+pass: 4 parallel agents writing adversarial test files against our
+own engine. 36 angles, 17 findings, including FOUR HIGH severity
+defects:
 
-The engine underneath is a Rust capability-token library
-(macaroon-style chain, ed25519 holder-of-key, replay protection via
-NonceStore, signed revocation list, caveat DSL with OR/AND/parens
-and decimals) with WASM/TS bindings and an MCP adapter that drops
-in front of any structurally-typed MCP client. Verified live
-integration against the official @modelcontextprotocol/server-
-filesystem. Per-call latency: 1.4 µs chain-only, 56 µs full hok,
-170 µs hok+replay. ~17 kHz 5-gate verifications per core.
+  A.1  Sub-ulp f64 collapse — `arg.amount <= 50` admits a holder
+       whose `amount` is `50.000000000000001`. Authorization bypass.
+  B.2  `cap.attenuate("")` produces a silent permanent-deny token.
+       Any holder in a chain can brick a delegated cap.
+  B.3  Auditor accepts a zero-byte HMAC key. Realistic deployment
+       trap (audit key derived from an unset env var).
+  C.5  Empty-caveat capability = god-mode. `Issuer.issue("x").build()`
+       with no caveats authorizes every context.
 
-220+ Rust tests, 136 TS tests in CI. Looking for adversarial review
-of the threat model and suggestions for the next purple-team round.
+These are real engineering defects, found and triaged before launch
+rather than after. v0.5 closes all four in one batch (fixes are
+queued; ETA this week). The corpus is the artifact; the library is
+the engine; the methodology — falsifiable claim → adversarial PoC →
+signed receipt — is what makes the corpus auditable.
+
+Engine: macaroon-style HMAC chain, ed25519 holder-of-key (DPoP-
+shape), NonceStore replay protection, signed revocation list, caveat
+DSL with boolean composition. WASM/TS bindings + MCP adapter,
+verified against @modelcontextprotocol/server-filesystem live. 1.4 µs
+chain-only verify, 56 µs hok, 170 µs hok+replay. ~17 kHz 5-gate
+verifications/core. unsafe_code = forbid.
+
+230+ Rust tests, ~318 TS tests, criterion benches in CI. Looking
+for adversarial review of the threat model + the angles
+methodology. If you can break round NN or design round 11, that's
+the conversation I'm here for.
 ```
 
 ## URL

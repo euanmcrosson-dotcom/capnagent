@@ -66,8 +66,12 @@ ed25519-dalek dominates the hok paths (~45 µs). Sustains ~17 kHz
 
   https://github.com/euanmcrosson-dotcom/capnagent
 
-220+ tests in CI including proptests for the macaroon no-broaden
-invariant and 8 boolean-algebra laws on the caveat DSL. Apache-2.0.
+230+ Rust tests (proptests for the macaroon no-broaden invariant
+and 8 boolean-algebra laws on the caveat DSL) + ~318 TS tests
+including a parallel-agent "angles" run that surfaced 17 findings
+in our own engine — 4 HIGH severity (sub-ulp f64 caveat-bypass,
+empty-attenuation brick, zero-byte audit key accepted, empty-caveat
+god-mode token). v0.5 closes all four. Apache-2.0.
 ```
 
 ## /r/MachineLearning
@@ -80,50 +84,64 @@ invariant and 8 boolean-algebra laws on the caveat DSL. Apache-2.0.
 ### Title
 
 ```
-[P] Public purple-team harness for MCP / AI-agent tool surfaces — round 01: tool-poisoning
+[P] Red-teaming our own AI-agent capability library — 4 HIGH severity defects found
 ```
 
 ### Body
 
 ```
 I've been building a public adversarial-test corpus for MCP servers
-and AI-agent tool calls. Each round in the corpus is one cycle of
-blue-first → red → iterate: write a falsifiable security claim,
-construct an attack designed to falsify it, run the attack, capture
-a signed denial receipt as evidence, and document the residual
-risk honestly.
+and AI-agent tool calls. Each round writes a falsifiable security
+claim, constructs an attack designed to falsify it, runs the attack
+worst-case (the agent is assumed fully compromised by the injection
+and emits exactly what the attacker described), and captures a
+signed denial receipt as evidence. Reviewers verify by running the
+suite — no prose-trust required.
 
-Round 01 is in: tool-description injection (cross-server confused
-deputy). It's the Invariant Labs 2025 attack class — a malicious
-MCP server returns a tool description that hijacks the agent's
-authority to read other co-installed servers' files (e.g. ~/.ssh/
-id_rsa via a legitimate filesystem-MCP). The PoC simulates the
-worst case: the agent has been fully compromised by the injection
-and emits exactly the calls the malicious description tried to
-induce. The structural defense holds — capnagent's capability gate
-denies regardless of HOW the call got emitted. 8/8 deterministic
-tests pass. The round explicitly documents what the defense does
-NOT cover (loose capabilities still lose; in-sandbox secrets are
-operator responsibility).
+10 rounds are closed (cross-server confused deputy / tool-poisoning,
+hok-replay, capability broadening, revocation race, cross-origin
+exfil, IDN homograph in origin allowlist, fs-sandbox path-traversal,
+encoding attacks, etc). 6 hold-with-caveat; 4 documented BREAKS
+with fixes shipped or queued in v0.5.
 
-Repo: https://github.com/euanmcrosson-dotcom/capnagent
-Methodology + first round: docs/purple-team/
+Then: an "angles" run — 4 parallel agents adversarially testing
+the engine itself, each writing >=5 angles in a dedicated test file.
+36 angles, 17 findings, 4 HIGH severity defects in our own engine:
+
+  A.1  Sub-ulp f64 collapse: caveat `arg.amount <= 50` admits a
+       holder whose `amount` is `50.000000000000001` (authorization
+       bypass via numeric coercion).
+  B.2  cap.attenuate("") produces a silent permanent-deny token —
+       any holder in a chain can brick a delegated cap.
+  B.3  Auditor accepts a zero-byte HMAC key (deployment trap if
+       the audit key derives from an unset env var).
+  C.5  Empty-caveat capability = god-mode. Issuer.issue("x").build()
+       with no caveats authorizes every context.
+
+These are not "we tested obvious threats and got the obvious
+answer." They are real engineering defects, found and triaged
+publicly *before* shipping.
 
 Why this framing matters: most prompt-injection writeups stop at
-"here's an attack." This corpus is the inverse — every entry is a
-defense being tested against the attack, with reproducible PoCs and
-signed receipts so reviewers can verify rather than trust.
+"here's an attack." Most security libraries stop at "here are our
+defenses, trust us." This corpus is the inverse of both — every
+entry is a defense being tested against an attack with reproducible
+PoCs and signed receipts, AND the engine itself is being adversarially
+reviewed in public, with findings logged before fixes.
 
-The engine underneath is a Rust capability-token library
-(macaroon-style chain, ed25519 holder-of-key, replay protection,
-revocation list, caveat DSL with boolean composition) wired through
-an MCP adapter. Live integration verified against the official
+Engine: Rust capability-token library — macaroon-style HMAC chain,
+ed25519 holder-of-key (DPoP-shape), NonceStore replay protection,
+signed revocation list, caveat DSL with boolean composition. WASM/TS
+bindings; MCP adapter verified live against the official
 @modelcontextprotocol/server-filesystem.
 
-Looking for adversarial review and suggestions for the next round.
-Replay attack on hok-bound caps and capability broadening are
-queued — I'd take "you're missing X" feedback over additional
-features at this point.
+Repo: https://github.com/euanmcrosson-dotcom/capnagent
+Methodology + rounds: docs/purple-team/
+Threat model (what's in/out of scope): docs/THREAT_MODEL.md
+
+Looking for adversarial review of the methodology and the angles
+findings. If you can break round NN or design round 11, that's the
+conversation I'm here for.
 ```
 
 ## /r/programming

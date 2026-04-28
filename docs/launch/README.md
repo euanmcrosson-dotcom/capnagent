@@ -6,11 +6,30 @@ it in front of strangers, in priority order. The work to ship is
 submit. Every minute spent polishing the README beyond this point
 is a minute not spent finding the first user.
 
-**Positioning** — capnagent is now framed as a *public purple-team
-harness for MCP and AI-agent tool surfaces* (with a Rust capability-
-token engine underneath). All four launch artifacts below lead with
-the corpus, not the library — the corpus is the artifact, the
-library is the engine.
+**Positioning** — capnagent is a *public purple-team harness for MCP
+and AI-agent tool surfaces* (with a Rust capability-token engine
+underneath). All four launch artifacts below lead with the corpus,
+not the library — the corpus is the artifact, the library is the
+engine.
+
+**Current corpus state (as of 2026-04-28):**
+
+- **10 purple-team rounds closed** (rounds 01–10). 6 hold-with-caveat;
+  4 documented BREAKS, with fixes shipped (rounds 06, 08) or queued
+  in v0.5 (rounds 07, 09, 10).
+- **Angles run:** 4 parallel agents, 36 angles, **17 findings** —
+  including **4 HIGH severity defects in our own engine** (sub-ulp
+  f64 caveat-bypass, empty-attenuation brick, zero-byte audit key
+  accepted, empty-caveat god-mode token).
+- **v0.4 shipped** mid-corpus. v0.5 (6 fixes) is queued and closes
+  the remaining BREAKS + the 4 HIGH findings.
+- **Tests:** 230+ Rust, ~318 TS, ~50 PoC + 97 angles tests.
+
+Lead every post with this. The drafts below were originally written
+when the corpus had 1 round; they have been updated to lead with
+the angles findings. The strongest sentence in any of them is:
+*"We red-teamed our own engine in parallel and found 4 HIGH severity
+defects — here they are, and here's the v0.5 fix queue."*
 
 ## Order of operations
 
