@@ -1,5 +1,10 @@
 # capnagent
 
+[![CI](https://github.com/euanmcrosson-dotcom/capnagent/actions/workflows/ci.yml/badge.svg)](https://github.com/euanmcrosson-dotcom/capnagent/actions/workflows/ci.yml)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+[![Rust: stable](https://img.shields.io/badge/rust-stable-orange.svg)](Cargo.toml)
+[![unsafe_code: forbid](https://img.shields.io/badge/unsafe__code-forbid-success.svg)](crates/capnagent-core/src/lib.rs)
+
 > **A public purple-team harness for MCP servers and AI-agent tool
 > surfaces.** Documents adversarial scenarios against agent tool calls,
 > writes the security claim in falsifiable form, and proves the defense
@@ -9,7 +14,17 @@
 > through an MCP adapter that drops in front of any structurally-typed
 > MCP client.
 
-The thesis: prompt injection is a **confused-deputy attack**. Smarter
+## At a glance
+
+| Corpus | Engine | Performance | Self-review |
+|---|---|---|---|
+| **10 / 10** rounds closed | **242 + 322** tests, all green | **1.4 µs** chain-only verify | **17** angles findings |
+| **4 / 4** documented BREAKS resolved | Apache-2.0, `unsafe_code = forbid` | **56 µs** full hok pipeline | **4 HIGH** in our own engine |
+| Methodology: blue-first, signed receipts | criterion benches in CI | **~17 kHz** verifications/core | **3 / 4** closed in v0.5 |
+
+Maps to [OWASP LLM01 / LLM07](docs/SECURITY-POSTURE.md), [MITRE ATLAS T0051 / T0044](docs/SECURITY-POSTURE.md), and the [NIST AI RMF MEASURE function](docs/SECURITY-POSTURE.md). See [SECURITY-POSTURE.md](docs/SECURITY-POSTURE.md), [RELATED-WORK.md](docs/RELATED-WORK.md), [COMPARISON.md](docs/COMPARISON.md), [EVALUATION.md](docs/EVALUATION.md) for the senior-reviewer-grade detail.
+
+The thesis: prompt injection is a **confused-deputy attack** ([Lampson, 1974](docs/RELATED-WORK.md)). Smarter
 guardrails don't fix it; removing the deputy's ambient authority does.
 The agent holds a capability that bounds what it CAN do; out-of-scope
 calls are refused before the underlying tool surface sees them.
@@ -144,11 +159,32 @@ examples/
                          can't slip past a substring gate.
 
 docs/
-  DESIGN.md              Threat model, security argument, error model,
-                         v0 milestones, v0.1 backlog.
+  DESIGN.md              Threat model, security argument, error
+                         model, v0 milestones, v0.1 backlog.
+  THREAT_MODEL.md        Canonical in-scope / out-of-scope table for
+                         every closed round.
+  SECURITY-POSTURE.md    Mapping to OWASP LLM Top 10, MITRE ATLAS,
+                         and NIST AI RMF. The doc senior reviewers
+                         expect to see.
+  RELATED-WORK.md        Literature review — capability lineage
+                         (Dennis Van Horn, Saltzer-Schroeder,
+                         Lampson), macaroons (Birgisson 2014), DPoP
+                         (RFC 9449), prompt-injection corpus
+                         (Greshake, Invariant Labs).
+  COMPARISON.md          capnagent vs. NeMo / Lakera / Rebuff / OPA
+                         / Cedar / IAM / JWT scopes / garak. The
+                         "but isn't this just X?" answer document.
+  EVALUATION.md          Reproducibility appendix: how to verify
+                         every quantitative claim in 5 minutes.
+  ROADMAP.md             v0.6 / v0.7 / v0.8 / v0.9 / v1.0 trajectory
+                         with explicit not-on-the-roadmap section.
   WEEK2_SPEC.md          Type contracts that drove the parallel
                          3-terminal week-2 implementation.
   WEEK3_SPEC.md          Same, for the WASM/TS surface.
+  purple-team/           The corpus — methodology + 10 closed rounds
+                         + signed-receipt evidence files.
+  launch/                Ready-to-fire HN / lobste.rs / reddit / DM
+                         drafts (post-launch state).
   demo-direct.gif        The recording above.
 ```
 
