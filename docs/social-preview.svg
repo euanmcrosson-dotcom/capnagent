@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 640" width="1280" height="640" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, monospace">
+  <!-- Background — deep navy with a subtle gradient so the card doesn't look flat -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0b1320"/>
+      <stop offset="100%" stop-color="#162033"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#7c3aed"/>
+      <stop offset="100%" stop-color="#06b6d4"/>
+    </linearGradient>
+  </defs>
+  <rect width="1280" height="640" fill="url(#bg)"/>
+
+  <!-- Top accent bar -->
+  <rect x="0" y="0" width="1280" height="6" fill="url(#accent)"/>
+
+  <!-- Title -->
+  <text x="80" y="140" font-size="84" font-weight="700" fill="#f1f5f9">capnagent</text>
+  <text x="80" y="190" font-size="26" fill="#94a3b8">Capability-bounded authorization for AI agent tool calls</text>
+
+  <!-- Stats grid: 4 columns × 3 rows -->
+  <!-- Column header bar -->
+  <line x1="80" y1="240" x2="1200" y2="240" stroke="#334155" stroke-width="1"/>
+
+  <!-- Column 1 — Corpus -->
+  <text x="80"  y="285" font-size="18" font-weight="600" fill="#06b6d4">CORPUS</text>
+  <text x="80"  y="345" font-size="56" font-weight="700" fill="#f1f5f9">10 / 10</text>
+  <text x="80"  y="378" font-size="18" fill="#94a3b8">rounds closed</text>
+  <text x="80"  y="430" font-size="36" font-weight="700" fill="#f1f5f9">4 / 4</text>
+  <text x="80"  y="458" font-size="18" fill="#94a3b8">BREAKS resolved</text>
+
+  <!-- Column 2 — Engine -->
+  <text x="360" y="285" font-size="18" font-weight="600" fill="#06b6d4">ENGINE</text>
+  <text x="360" y="345" font-size="56" font-weight="700" fill="#f1f5f9">242 + 322</text>
+  <text x="360" y="378" font-size="18" fill="#94a3b8">tests, all green</text>
+  <text x="360" y="430" font-size="22" font-weight="600" fill="#f1f5f9">unsafe_code = forbid</text>
+  <text x="360" y="458" font-size="18" fill="#94a3b8">Apache-2.0, Rust + WASM</text>
+
+  <!-- Column 3 — Performance -->
+  <text x="700" y="285" font-size="18" font-weight="600" fill="#06b6d4">PERFORMANCE</text>
+  <text x="700" y="345" font-size="56" font-weight="700" fill="#f1f5f9">1.4 µs</text>
+  <text x="700" y="378" font-size="18" fill="#94a3b8">chain-only verify</text>
+  <text x="700" y="430" font-size="36" font-weight="700" fill="#f1f5f9">~17 kHz</text>
+  <text x="700" y="458" font-size="18" fill="#94a3b8">verifications/core</text>
+
+  <!-- Column 4 — Self-review -->
+  <text x="980" y="285" font-size="18" font-weight="600" fill="#06b6d4">SELF-REVIEW</text>
+  <text x="980" y="345" font-size="56" font-weight="700" fill="#f1f5f9">17</text>
+  <text x="980" y="378" font-size="18" fill="#94a3b8">angles findings</text>
+  <text x="980" y="430" font-size="36" font-weight="700" fill="#f1f5f9">4 HIGH</text>
+  <text x="980" y="458" font-size="18" fill="#94a3b8">3 closed in v0.5</text>
+
+  <!-- Bottom rule -->
+  <line x1="80" y1="510" x2="1200" y2="510" stroke="#334155" stroke-width="1"/>
+
+  <!-- Bottom row — repo + thesis -->
+  <text x="80"   y="560" font-size="22" fill="#cbd5e1">github.com/euanmcrosson-dotcom/capnagent</text>
+  <text x="80"   y="595" font-size="18" fill="#64748b">Prompt injection is a confused-deputy attack. Remove the deputy's ambient authority.</text>
+
+  <!-- Version pill (top right) -->
+  <rect x="1080" y="100" width="120" height="40" rx="6" fill="#7c3aed"/>
+  <text x="1140" y="127" font-size="20" font-weight="700" fill="#f1f5f9" text-anchor="middle">v0.5</text>
+</svg>
