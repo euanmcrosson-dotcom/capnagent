@@ -85,10 +85,15 @@ The attack class capnagent exists to neutralize:
   Indirect Prompt Injection.* The foundational paper. Round 01 of
   the corpus is a structurally-tested instance of this class
   against an MCP filesystem server.
-- **Liu et al., 2024.** *Prompt Injection attack against
-  LLM-integrated Applications.* USENIX Security 2024. Empirical
-  characterization of injection across multiple LLM-integrated
-  apps. The corpus's round-by-round measurement style is informed
+- **Yi Liu et al., 2023.** *Prompt Injection attack against
+  LLM-integrated Applications* (arXiv:2306.05499). One of the first
+  taxonomies of prompt-injection attacks against LLM-integrated apps.
+  The corpus's worst-case-attacker assumption (the model fully
+  cooperates with the injection) draws on their categorisation.
+- **Yupei Liu et al., 2024.** *Formalizing and Benchmarking Prompt
+  Injection Attacks and Defenses.* USENIX Security 2024. Formal
+  taxonomy + benchmark across 5 injection attacks and 10 defenses on
+  10 LLMs. The corpus's round-by-round measurement style is informed
   by their reproducibility standards.
 - **Invariant Labs, April 2025.** *MCP tool-poisoning attacks.*
   The specific attack class round 01 reproduces — a malicious MCP
