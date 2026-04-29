@@ -28,9 +28,7 @@ use std::sync::Arc;
 
 use capnagent_core as core;
 use core::nonce_store::{InMemoryNonceStore, NonceStore as CoreNonceStore};
-use core::revocation::{
-    RevocationList as CoreRevocationList, Revoker as CoreRevoker,
-};
+use core::revocation::{RevocationList as CoreRevocationList, Revoker as CoreRevoker};
 use serde_wasm_bindgen::{from_value as js_to, to_value as to_js};
 use wasm_bindgen::prelude::*;
 

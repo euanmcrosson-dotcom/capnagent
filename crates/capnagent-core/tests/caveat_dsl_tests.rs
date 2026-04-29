@@ -1051,7 +1051,10 @@ fn starts_with_anchored_prefix_admits_only_when_prefix_at_byte_zero() {
     );
 
     ctx.args = serde_json::json!({"path": "/etc/passwd"});
-    assert!(!evaluate(&p, &ctx).unwrap(), "unrelated path must not match");
+    assert!(
+        !evaluate(&p, &ctx).unwrap(),
+        "unrelated path must not match"
+    );
 }
 
 #[test]
@@ -1115,5 +1118,8 @@ fn starts_with_keyword_does_not_munch_idents() {
     // This is a legal identifier path (parser-level), even if the
     // segment "starts_with_x" wouldn't resolve at evaluate time. The
     // important point is the parser doesn't error on it.
-    assert!(p.is_ok(), "parser must not split starts_with_x as op + ident");
+    assert!(
+        p.is_ok(),
+        "parser must not split starts_with_x as op + ident"
+    );
 }
