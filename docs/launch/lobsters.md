@@ -12,7 +12,7 @@ Different audience from HN: smaller, more technical, more patient with crypto an
 ## Title
 
 ```
-Capnagent: a public purple-team harness for MCP and AI-agent tool surfaces
+Capnagent + mcp-recon: defensive engine and offensive companion for MCP agents
 ```
 
 ## URL
@@ -24,14 +24,25 @@ https://github.com/euanmcrosson-dotcom/capnagent
 ## Description (the box under the URL)
 
 ```
-A public adversarial-test corpus for MCP servers and AI-agent tool
-surfaces, plus the Rust capability-token engine that powers the
-defense. Methodology is blue-first: each round writes a falsifiable
-security claim, then the red side constructs an attack designed to
-falsify it. The PoC simulates the worst case — agent fully
-compromised, emits exactly the calls the attacker described — and
-asserts the structural defense holds regardless of model behavior.
-Every denial produces a signed receipt committed as evidence;
+Two related projects shipping together:
+
+  capnagent  — capability-bounded authorization for AI agent tool calls.
+  mcp-recon  — reverse-engineer any MCP server's tool surface in 30s
+               (github.com/euanmcrosson-dotcom/mcp-recon).
+
+The recon-then-bound workflow: mcp-recon scans an MCP server,
+emits a Markdown threat profile + recommended capnagent caveat
+per tool; capnagent enforces those caveats at the gate.
+
+capnagent (the deeper of the two): a public adversarial-test
+corpus for MCP servers and AI-agent tool surfaces, plus the Rust
+capability-token engine that powers the defense. Methodology is
+blue-first: each round writes a falsifiable security claim, then
+the red side constructs an attack designed to falsify it. The
+PoC simulates the worst case — agent fully compromised, emits
+exactly the calls the attacker described — and asserts the
+structural defense holds regardless of model behavior. Every
+denial produces a signed receipt committed as evidence;
 reviewers verify by running the suite.
 
 10 rounds closed (cross-server confused deputy, hok-replay,

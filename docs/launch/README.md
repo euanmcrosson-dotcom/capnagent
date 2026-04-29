@@ -12,6 +12,14 @@ underneath). All four launch artifacts below lead with the corpus,
 not the library — the corpus is the artifact, the library is the
 engine.
 
+**Companion project** — [mcp-recon](https://github.com/euanmcrosson-dotcom/mcp-recon)
+is now public (v0.1 shipped 2026-04-29). Reverse-engineers any MCP
+server's tool surface, emits a Markdown threat profile plus a
+recommended capnagent caveat per tool. Every launch artifact
+below has been updated to lead with *"defensive engine + offensive
+companion"* rather than capnagent solo — the two-project story
+lands harder than either alone.
+
 **Current corpus state (as of 2026-04-28):**
 
 - **10 purple-team rounds closed** (rounds 01–10). All BREAKS now

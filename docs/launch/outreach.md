@@ -35,15 +35,17 @@ wrong one — prompt injection, naive harness, or an over-broad user
 request?
 
 I've been building a public purple-team corpus for MCP / agent tool
-surfaces. Each round writes a falsifiable security claim, constructs
-an attack designed to falsify it, and either confirms the defense
-holds (with a signed denial receipt as evidence) or documents how
-it broke. 10 rounds closed so far (tool-poisoning, hok-replay, IDN
-homograph, fs path-traversal, etc), and we just ran 4 parallel agents
-adversarially against our own engine — they found 17 issues, 4 HIGH
-severity (sub-ulp numeric coercion bypass, empty-attenuation brick,
-zero-byte audit key, empty-caveat god-mode token). v0.5 closes all
-four. Repo: github.com/euanmcrosson-dotcom/capnagent.
+surfaces — github.com/euanmcrosson-dotcom/capnagent — and just
+shipped a recon companion that scans any MCP server's tool
+surface in 30 seconds and emits a Markdown threat profile plus
+copy-pasteable caveats: github.com/euanmcrosson-dotcom/mcp-recon.
+
+10 capnagent rounds closed (tool-poisoning, hok-replay, IDN
+homograph, fs path-traversal, etc), and a parallel-agent
+adversarial review of the engine itself surfaced 17 issues, 4
+HIGH severity (sub-ulp numeric coercion bypass, empty-attenuation
+brick, zero-byte audit key, empty-caveat god-mode). v0.5 closes
+3 of 4 (A.1 sub-ulp f64 parked under design discussion).
 
 I'm looking to add a round against a real production stack. If your
 agent surface is interesting, happy to do the integration + write

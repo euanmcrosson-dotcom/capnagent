@@ -7,21 +7,45 @@
 ## Title (≤80 chars)
 
 ```
-Show HN: Capnagent – a public purple-team harness for MCP and AI agent tools
+Show HN: Capnagent + mcp-recon — defensive engine and offensive companion for MCP
 ```
 
 ## Body (paste as the first comment on the post)
 
 ```
-Hi HN — capnagent is a public purple-team harness for MCP servers
-and AI-agent tool surfaces, plus the Rust capability-token engine
-underneath. Methodology is blue-first: every round writes a
-falsifiable security claim, then constructs an attack designed to
-falsify it. The PoC simulates the worst case (the model has been
-fully compromised by the injection and emits exactly the calls the
+Hi HN — two related projects shipping together:
+
+  capnagent  — capability-bounded authorization for AI agent tool calls.
+               github.com/euanmcrosson-dotcom/capnagent
+  mcp-recon  — reverse-engineer any MCP server's tool surface in 30 seconds.
+               github.com/euanmcrosson-dotcom/mcp-recon
+
+The recon → bound workflow:
+
+   [ mcp-recon ]  →  threat profile  →  [ capnagent ]
+      "what is        "what should           "deny anything
+       here?"          we allow?"             outside that"
+
+Run mcp-recon against your MCP server; get a Markdown threat
+profile classifying each tool against OWASP LLM Top 10 + MITRE
+ATLAS, with a recommended capnagent caveat per tool. Paste the
+caveats into your capnagent issuer. Done.
+
+The rest of this post focuses on capnagent (the deeper of the two),
+but the strongest 5-second pitch is: defensive engine + offensive
+companion = one full security posture for any MCP-shaped agent.
+
+# capnagent (the defensive side)
+
+A public purple-team harness for MCP servers and AI-agent tool
+surfaces, plus the Rust capability-token engine underneath.
+Methodology is blue-first: every round writes a falsifiable
+security claim, then constructs an attack designed to falsify it.
+The PoC simulates the worst case (the model has been fully
+compromised by the injection and emits exactly the calls the
 attacker described), and the verifier's denial — or admission — is
-recorded as a signed audit receipt. Reviewers verify by running the
-suite; no prose-trust required.
+recorded as a signed audit receipt. Reviewers verify by running
+the suite; no prose-trust required.
 
 The interesting thing isn't that we built defenses — it's that we
 red-teamed them. 10 rounds are closed (cross-server confused deputy,

@@ -11,18 +11,25 @@ Three distinct subreddits, three distinct framings. Don't cross-post — tailor 
 ### Title
 
 ```
-Capnagent: a Rust capability-token engine + public purple-team corpus for MCP
+Capnagent (Rust) + mcp-recon (TS): a defensive engine and offensive companion for MCP
 ```
 
 ### Body
 
 ```
-I built capnagent — a Rust capability-token engine and a public
-purple-team test corpus for MCP servers and AI-agent tool surfaces.
-The library powers the defense; the corpus is the artifact —
-adversarial scenarios with falsifiable claims and runnable PoCs.
+Shipping two related projects together — defensive engine in
+Rust + WASM, offensive companion in TS:
 
-Sharing some Rust-specific decisions and looking for feedback.
+  capnagent  — Rust capability-token engine. Macaroon chain,
+               ed25519 hok, signed receipts. Tests an
+               adversarial corpus against itself.
+  mcp-recon  — TS CLI that reverse-engineers any MCP server's
+               tool surface; emits a threat profile +
+               recommended capnagent caveat per tool.
+               (github.com/euanmcrosson-dotcom/mcp-recon)
+
+This post focuses on the Rust side. Sharing some Rust-specific
+decisions and looking for feedback.
 
 **Architecture**
 
@@ -85,19 +92,35 @@ remains under design discussion). Apache-2.0.
 ### Title
 
 ```
-[P] Red-teaming our own AI-agent capability library — 4 HIGH severity defects found
+[P] I red-teamed my own AI-agent security library AND scanned every public MCP server
 ```
 
 ### Body
 
 ```
-I've been building a public adversarial-test corpus for MCP servers
-and AI-agent tool calls. Each round writes a falsifiable security
-claim, constructs an attack designed to falsify it, runs the attack
-worst-case (the agent is assumed fully compromised by the injection
-and emits exactly what the attacker described), and captures a
-signed denial receipt as evidence. Reviewers verify by running the
-suite — no prose-trust required.
+Two related projects shipping together:
+
+  capnagent  — capability-bounded authorization for AI agent
+               tool calls (Rust + WASM + TS).
+  mcp-recon  — reverse-engineer any MCP server's tool surface
+               in 30s (TS).
+               github.com/euanmcrosson-dotcom/mcp-recon
+
+The recon-then-bound workflow:
+
+  [ mcp-recon ]  →  threat profile  →  [ capnagent ]
+     "what is        "what should           "deny anything
+      here?"          we allow?"             outside that"
+
+This post is about both, but the methodology comes from
+capnagent. I've been building a public adversarial-test corpus
+for MCP servers and AI-agent tool calls. Each round writes a
+falsifiable security claim, constructs an attack designed to
+falsify it, runs the attack worst-case (the agent is assumed
+fully compromised by the injection and emits exactly what the
+attacker described), and captures a signed denial receipt as
+evidence. Reviewers verify by running the suite — no
+prose-trust required.
 
 10 rounds are closed (cross-server confused deputy / tool-poisoning,
 hok-replay, capability broadening, revocation race, cross-origin
