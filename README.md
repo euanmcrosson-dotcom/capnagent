@@ -36,6 +36,25 @@ Anthropic SDK is asked to send a $30 wire **and** buy a USB-C cable.
 Issued capability scopes the agent to `tool == "checkout.purchase"`.
 Wire denied at the gate; cable proceeds; both decisions audit-logged.
 
+## Companion project: [mcp-recon](https://github.com/euanmcrosson-dotcom/mcp-recon)
+
+capnagent is the *defensive* side of the MCP-security workflow.
+The *reconnaissance* side is [mcp-recon](https://github.com/euanmcrosson-dotcom/mcp-recon)
+— a CLI that enumerates an MCP server's tool surface, fuzzes each
+tool's schema along six adversarial axes, classifies authority
+against OWASP LLM Top 10 + MITRE ATLAS, and emits a Markdown
+threat profile with a recommended capnagent caveat per tool.
+
+```
+[ mcp-recon ]  →  threat profile  →  [ capnagent ]
+   "what is        "what should           "deny anything
+    here?"          we allow?"             outside that"
+```
+
+Each project stands alone. Together they're a single security
+posture for any MCP-shaped agent. Run mcp-recon first, paste the
+suggested caveats into your capnagent issuer, ship.
+
 ## The purple-team corpus
 
 The library is the engine. The **corpus** is the artifact —
