@@ -41,11 +41,16 @@ failure modes (rounds 06–10).
 | Forgot NonceStore on hok-bound caps | [08](purple-team/08-forgot-nonce-store.md) | CLOSED via v0.4 |
 | IDN homograph in origin allowlist | [09](purple-team/09-idn-homograph-origin.md) | **BREAKS** (v0.5 queued) |
 | Path-traversal / encoding attacks against fs-sandbox | [10](purple-team/10-encoding-attacks.md) | **BREAKS** (v0.5 queued; same fix as round 07) |
+| Cumulative-resource / cost-amplification caveat (`verifier.<field>`) | [14](purple-team/14-resource-budget-caveat.md) | CLOSED via v0.6 |
 
 The structural defense holds in every closed round. The three
 BREAKS rounds (07, 09, 10) are operator-config foot-guns whose
 fixes are queued in v0.5 and which document defender-actionable
-mitigations available today.
+mitigations available today. Round 14 is the first round whose
+CLOSED required a net-new authority surface (the `verifier.<field>`
+DSL identifier shipped in v0.6) — capnagent now has language to
+deny tool calls based on facts the agent cannot mint, closing
+the cumulative-effect class that round 11 identified.
 
 ## Out-of-scope: what capnagent does NOT defend against
 
