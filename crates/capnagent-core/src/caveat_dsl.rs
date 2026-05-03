@@ -691,6 +691,37 @@ fn resolve_ident(ident: &Ident, ctx: &Context) -> Result<Value, DslError> {
                 .map(|v| Value::String(v.clone()))
                 .ok_or_else(|| DslError::UnknownIdent(dotted()))
         }
+        "verifier" => {
+            // v0.6 (round 14): verifier-only facts. Mirrors the `arg`
+            // walk-and-convert pattern, but reads from
+            // `ctx.verifier_facts` — a slot the operator's harness
+            // populates BEFORE calling `verify_with_context`. The agent
+            // never touches it (that's the security claim — the only
+            // honest defense against cost-amplification / depth-bomb /
+            // budget-burn attacks is for the verifier to consult facts
+            // the agent cannot mint).
+            //
+            // A bare `verifier` (no field) is rejected as
+            // `UnknownIdent` so a typo can't accidentally resolve to
+            // the whole facts object.
+            if segs.len() < 2 {
+                return Err(DslError::UnknownIdent(dotted()));
+            }
+            let mut cur: &serde_json::Value = &ctx.verifier_facts;
+            for seg in &segs[1..] {
+                cur = match cur {
+                    serde_json::Value::Object(map) => match map.get(seg) {
+                        Some(v) => v,
+                        None => return Err(DslError::UnknownIdent(dotted())),
+                    },
+                    _ => return Err(DslError::UnknownIdent(dotted())),
+                };
+            }
+            json_to_value(cur).ok_or_else(|| DslError::TypeMismatch {
+                expected: "string or number at verifier path".into(),
+                got: format!("{} at {}", json_kind(cur), dotted()),
+            })
+        }
         _ => Err(DslError::UnknownIdent(dotted())),
     }
 }

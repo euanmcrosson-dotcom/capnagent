@@ -668,6 +668,19 @@ fn decode_context(value: JsValue) -> Result<core::Context, JsError> {
         tool: String,
         args: serde_json::Value,
         env: Option<HashMap<String, String>>,
+        /// Verifier-only facts. Mirrors `Context::verifier_facts` —
+        /// populated by the operator's harness, never the agent. The
+        /// DSL accesses fields under this object as `verifier.<key>`.
+        ///
+        /// `serde_wasm_bindgen` decodes a missing JS field into
+        /// `serde_json::Value::Null` here (because the field is
+        /// `serde_json::Value`, not `Option`), but it also turns a
+        /// missing field into a hard parse error on the JS->Rust
+        /// boundary if the JS side hasn't sent the key. We use
+        /// `#[serde(default)]` to make it truly optional — older
+        /// callers (pre-v0.6) keep working without the field.
+        #[serde(default)]
+        verifier_facts: serde_json::Value,
     }
 
     let parsed: CtxIn = js_to(value).map_err(|e| JsError::new(&e.to_string()))?;
@@ -682,5 +695,6 @@ fn decode_context(value: JsValue) -> Result<core::Context, JsError> {
         tool: parsed.tool,
         args: parsed.args,
         env: parsed.env.unwrap_or_default(),
+        verifier_facts: parsed.verifier_facts,
     })
 }
