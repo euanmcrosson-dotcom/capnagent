@@ -123,6 +123,7 @@ the structural claim; blue-first dominates here.
 | 08 | Forgot NonceStore on hok-bound caps (operator trap) | OWASP A04, A07         | CLOSED 2026-04-27 (Run 1; v0.4 `hasNonceStore()` enables detection) | 2026-10-27 | dual: without store: replay (NOT INSTALLED) allowing replay; with store: replay ✗ |
 | 09 | IDN homograph in origin allowlist (operator trap) | CWE-1007, OWASP A04    | **BREAKS** 2026-04-27 (`isExactOrigin` accepts punycode silently; TR39 fix queued) | 2026-10-27 | chain ✓ caveat ✓ (allows attacker-host punycode) |
 | 10 | Encoding / path-traversal attacks against fs-sandbox | OWASP A04, CWE-22, CWE-23 | **BREAKS** 2026-04-28 (substring caveat sees `/sandbox/../outside/secret`; v0.5 fix queued) | 2026-10-28 | chain ✓ caveat ✓ (path resolves out-of-sandbox) |
+| 11 | Indirect injection cascade via tool response (runtime sibling of round 01) | OWASP LLM01, CWE-441 | CLOSED 2026-05-03 | 2026-11-03 | chain ✓ caveat ✗ (on follow-on call) |
 
 (Status enum: `OPEN`, `PARTIAL`, `CLOSED — date`. Gates symbols:
 `✓` gate checked + passed; `✗` gate checked + denied (this is
