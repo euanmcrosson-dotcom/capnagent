@@ -35,6 +35,21 @@ pub struct Context {
     /// Environment facts the verifier wants caveats to be able to read
     /// (e.g. `region`, `tenant`).
     pub env: HashMap<String, String>,
+    /// Verifier-only facts — populated by the operator's harness, never
+    /// by the agent or by tool-supplied input. Exposed to the DSL under
+    /// `verifier.<field>` (see [`crate::caveat_dsl`]). The shape is
+    /// arbitrary JSON so a single field can carry counters, depth, or
+    /// nested structures (`verifier.budget.tokens_used`).
+    ///
+    /// Defaults to `Value::Null` when not populated; any `verifier.*`
+    /// caveat then resolves to `UnknownIdent` and fails closed. That's
+    /// the right default — a caveat that depends on facts the harness
+    /// didn't provide is a misconfiguration, not a permission grant.
+    ///
+    /// Added in v0.6 as the round-14 ("resource-budget caveat")
+    /// surface. The security claim is conditional on the operator's
+    /// harness — not the agent — being the one that writes here.
+    pub verifier_facts: Value,
 }
 
 impl Context {
@@ -86,6 +101,7 @@ pub struct ContextBuilder {
     tool: String,
     args: Value,
     env: HashMap<String, String>,
+    verifier_facts: Value,
 }
 
 impl Default for ContextBuilder {
@@ -96,6 +112,7 @@ impl Default for ContextBuilder {
             tool: String::new(),
             args: Value::Null,
             env: HashMap::new(),
+            verifier_facts: Value::Null,
         }
     }
 }
@@ -137,6 +154,17 @@ impl ContextBuilder {
         self
     }
 
+    /// Set the verifier-only facts JSON. Replaces any previously-set value.
+    ///
+    /// Reachable from the DSL as `verifier.<field>` (see
+    /// [`Context::verifier_facts`]). The contract is that ONLY the
+    /// operator's harness should set this — never the agent.
+    #[must_use]
+    pub fn verifier_facts(mut self, v: Value) -> Self {
+        self.verifier_facts = v;
+        self
+    }
+
     /// Finalize the builder into a [`Context`].
     #[must_use]
     pub fn build(self) -> Context {
@@ -146,6 +174,7 @@ impl ContextBuilder {
             tool: self.tool,
             args: self.args,
             env: self.env,
+            verifier_facts: self.verifier_facts,
         }
     }
 }

@@ -18,6 +18,26 @@ export interface Context {
   tool: string;
   args: unknown;
   env?: Record<string, string>;
+  /**
+   * Verifier-only facts the operator's harness populates BEFORE
+   * calling `verifyWithContext`. The agent NEVER touches this — that's
+   * the security argument. Reachable from caveat predicates as
+   * `verifier.<key>` (and dotted paths like `verifier.budget.tokens`).
+   *
+   * Use this for fact classes the agent shouldn't be able to mint:
+   * cumulative cost, retry depth, sub-agent recursion depth, time
+   * elapsed since cap issue, etc. A caveat like
+   * `verifier.tokens_used <= 4096` denies tool calls only after the
+   * verifier-tracked counter has crossed the threshold — the agent
+   * cannot lie about the counter to slip past.
+   *
+   * Optional. If omitted, any `verifier.*` caveat resolves to
+   * `UnknownIdent` and fails closed (the right default — a caveat
+   * referencing facts the harness didn't provide is a misconfig).
+   *
+   * v0.6 / round 14.
+   */
+  verifierFacts?: unknown;
 }
 
 /**

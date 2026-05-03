@@ -64,6 +64,7 @@ fn ctx_with(now_str: &str, caller: &str, tool: &str) -> Context {
         tool: tool.into(),
         args: serde_json::Value::Null,
         env: HashMap::new(),
+        verifier_facts: serde_json::Value::Null,
     }
 }
 
@@ -74,6 +75,7 @@ fn empty_ctx() -> Context {
         tool: String::new(),
         args: serde_json::Value::Null,
         env: HashMap::new(),
+        verifier_facts: serde_json::Value::Null,
     }
 }
 
@@ -1122,4 +1124,88 @@ fn starts_with_keyword_does_not_munch_idents() {
         p.is_ok(),
         "parser must not split starts_with_x as op + ident"
     );
+}
+
+// ───────────────────────── verifier.<field> (round 14, v0.6) ─────────────────────────
+//
+// `verifier.<field>` reads from `Context::verifier_facts` — a JSON slot
+// the operator's harness populates BEFORE calling `verify_with_context`.
+// The agent never touches it. Tests below exercise the resolver shape;
+// the security argument (that the agent really cannot mint these
+// facts) is the operator's; the DSL only contracts that the resolver
+// behaves the same way `arg` does on the read side.
+
+#[test]
+fn verifier_field_resolves_a_top_level_number() {
+    let mut ctx = empty_ctx();
+    ctx.verifier_facts = serde_json::json!({ "tokens_used": 4096 });
+    let p = parse("verifier.tokens_used <= 8192").unwrap();
+    assert!(evaluate(&p, &ctx).unwrap());
+}
+
+#[test]
+fn verifier_field_denies_when_threshold_crossed() {
+    let mut ctx = empty_ctx();
+    ctx.verifier_facts = serde_json::json!({ "tokens_used": 9000 });
+    let p = parse("verifier.tokens_used <= 8192").unwrap();
+    assert!(!evaluate(&p, &ctx).unwrap());
+}
+
+#[test]
+fn verifier_field_resolves_a_nested_path() {
+    let mut ctx = empty_ctx();
+    ctx.verifier_facts = serde_json::json!({
+        "budget": { "tokens_used": 100, "cost_cents": 25 },
+    });
+    let p = parse("verifier.budget.cost_cents <= 50_cents").unwrap();
+    // verifier.budget.cost_cents resolves as Number(25.0, None); the
+    // RHS literal carries unit `cents`. Unit mismatch on the resolved
+    // side is the documented behavior — JSON-derived numbers come back
+    // unitless. This test pins that contract: a caveat author must
+    // either drop the unit on the literal or the harness must encode
+    // the unit explicitly elsewhere. We expect a TypeMismatch here.
+    let err = evaluate(&p, &ctx).unwrap_err();
+    assert!(matches!(err, DslError::TypeMismatch { .. }), "{err:?}");
+    // …and unitless RHS works.
+    let p2 = parse("verifier.budget.cost_cents <= 50").unwrap();
+    assert!(evaluate(&p2, &ctx).unwrap());
+}
+
+#[test]
+fn verifier_field_resolves_a_string() {
+    let mut ctx = empty_ctx();
+    ctx.verifier_facts = serde_json::json!({ "region": "us-east-1" });
+    let p = parse(r#"verifier.region == "us-east-1""#).unwrap();
+    assert!(evaluate(&p, &ctx).unwrap());
+}
+
+#[test]
+fn missing_verifier_field_is_unknown_ident_not_silent_pass() {
+    // Fail-closed: the harness forgot to populate the fact, so the
+    // caveat that depends on it must NOT silently allow.
+    let ctx = empty_ctx();
+    let p = parse("verifier.tokens_used <= 8192").unwrap();
+    let err = evaluate(&p, &ctx).unwrap_err();
+    assert!(matches!(err, DslError::UnknownIdent(_)), "{err:?}");
+}
+
+#[test]
+fn verifier_with_no_field_is_unknown_ident() {
+    let mut ctx = empty_ctx();
+    ctx.verifier_facts = serde_json::json!({ "tokens_used": 1 });
+    // Bare `verifier` (no `.<field>`) is rejected — a typo can't
+    // accidentally resolve the whole facts object.
+    let p = parse(r#"verifier == "anything""#).unwrap();
+    let err = evaluate(&p, &ctx).unwrap_err();
+    assert!(matches!(err, DslError::UnknownIdent(_)), "{err:?}");
+}
+
+#[test]
+fn verifier_path_into_non_object_is_unknown_ident() {
+    // Same pattern as `arg.x.y` when `arg.x` is not an object.
+    let mut ctx = empty_ctx();
+    ctx.verifier_facts = serde_json::json!({ "depth": 3 });
+    let p = parse("verifier.depth.subagent <= 5").unwrap();
+    let err = evaluate(&p, &ctx).unwrap_err();
+    assert!(matches!(err, DslError::UnknownIdent(_)), "{err:?}");
 }
