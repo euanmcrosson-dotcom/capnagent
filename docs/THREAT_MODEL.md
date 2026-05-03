@@ -42,6 +42,7 @@ failure modes (rounds 06–10).
 | IDN homograph in origin allowlist | [09](purple-team/09-idn-homograph-origin.md) | **BREAKS** (v0.5 queued) |
 | Path-traversal / encoding attacks against fs-sandbox | [10](purple-team/10-encoding-attacks.md) | **BREAKS** (v0.5 queued; same fix as round 07) |
 | Indirect injection cascade via tool response (runtime sibling of round 01) | [11](purple-team/11-indirect-injection-cascade-via-tool-response.md) | holds-with-caveat |
+| Capability re-issuance after denial (operator runbook, not structural) | [12](purple-team/12-cap-reissuance-after-denial.md) | runbook-only — operator integrates back-off on the receipt stream |
 
 The structural defense holds in every closed round. The three
 BREAKS rounds (07, 09, 10) are operator-config foot-guns whose
