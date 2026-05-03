@@ -74,6 +74,7 @@ fn frozen_ctx() -> Context {
         tool: "checkout.purchase".into(),
         args: serde_json::json!({ "merchant": "amazon.com", "amount": 20 }),
         env: HashMap::new(),
+        verifier_facts: serde_json::Value::Null,
     }
 }
 

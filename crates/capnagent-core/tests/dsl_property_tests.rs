@@ -207,6 +207,7 @@ fn context_strategy() -> impl Strategy<Value = Context> {
             tool: tool.to_string(),
             args: serde_json::Value::Object(args),
             env,
+            verifier_facts: serde_json::Value::Null,
         }
     })
 }

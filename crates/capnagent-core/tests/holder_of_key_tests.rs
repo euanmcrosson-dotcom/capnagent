@@ -27,6 +27,7 @@ fn ctx() -> Context {
         tool: "tool".into(),
         args: serde_json::json!({"x": 1}),
         env: HashMap::new(),
+        verifier_facts: serde_json::Value::Null,
     }
 }
 

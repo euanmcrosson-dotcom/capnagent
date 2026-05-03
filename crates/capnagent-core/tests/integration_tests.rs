@@ -36,6 +36,7 @@ fn ctx_with(caller: &str, tool: &str, args: serde_json::Value) -> Context {
         tool: tool.into(),
         args,
         env: HashMap::new(),
+        verifier_facts: serde_json::Value::Null,
     }
 }
 
@@ -277,6 +278,7 @@ fn time_caveat_observes_verifier_supplied_now() {
         tool: "http.post".into(),
         args: serde_json::Value::Null,
         env: HashMap::new(),
+        verifier_facts: serde_json::Value::Null,
     };
 
     let receipt = verifier()

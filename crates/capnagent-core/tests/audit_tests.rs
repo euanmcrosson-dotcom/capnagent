@@ -32,6 +32,7 @@ fn sample_ctx() -> Context {
             "items": ["usb-c-cable"],
         }),
         env,
+        verifier_facts: serde_json::Value::Null,
     }
 }
 

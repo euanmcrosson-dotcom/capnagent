@@ -53,6 +53,7 @@ fn ctx_for(tool: &str) -> Context {
         tool: tool.into(),
         args: serde_json::json!({ "merchant": "amazon.com", "amount": 12.50 }),
         env: HashMap::new(),
+        verifier_facts: serde_json::Value::Null,
     }
 }
 
@@ -155,6 +156,7 @@ fn bench_verify_with_proof_and_replay(c: &mut Criterion) {
             tool: "checkout.purchase".into(),
             args: serde_json::json!({ "merchant": "amazon.com", "amount": 12.50 }),
             env: HashMap::new(),
+            verifier_facts: serde_json::Value::Null,
         };
         let challenge = pop_challenge_for(&cap, &ctx);
         let proof = signing_key.sign(&challenge).to_bytes();
