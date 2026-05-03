@@ -45,15 +45,23 @@ tool's schema along six adversarial axes, classifies authority
 against OWASP LLM Top 10 + MITRE ATLAS, and emits a Markdown
 threat profile with a recommended capnagent caveat per tool.
 
+As of [mcp-recon v0.2.0](https://github.com/euanmcrosson-dotcom/mcp-recon/releases/tag/v0.2.0)
+the handoff is machine-readable: the new `mcp-recon caveats`
+subcommand emits a structured `mcp-recon/v0.1/caveats` JSON
+artifact — a list of capnagent-ready issuance plans (tool
+identifier + caveat DSL strings + provenance) keyed off the
+classification pass:
+
 ```
-[ mcp-recon ]  →  threat profile  →  [ capnagent ]
-   "what is        "what should           "deny anything
-    here?"          we allow?"             outside that"
+[ mcp-recon ]  →  classification.json  →  [ mcp-recon caveats ]  →  caveats.json (v0.1)  →  [ capnagent ]
+   "what is        "what authority         "what should we                "deny anything
+    here?"          does each tool          allow per tool?"               outside that"
+                    carry?"
 ```
 
 Each project stands alone. Together they're a single security
-posture for any MCP-shaped agent. Run mcp-recon first, paste the
-suggested caveats into your capnagent issuer, ship.
+posture for any MCP-shaped agent. Run mcp-recon first, feed the
+v0.1 caveats artifact into your capnagent issuer, ship.
 
 ## The purple-team corpus
 

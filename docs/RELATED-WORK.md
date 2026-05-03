@@ -163,6 +163,17 @@ Lakera Guard vs. Rebuff vs. NVIDIA garak), see
   signals. capnagent assumes detection has failed and ensures the
   blast radius is bounded. See [`COMPARISON.md`](COMPARISON.md)
   for "what's the right layer for what."
+- **mcp-recon** ([repo](https://github.com/euanmcrosson-dotcom/mcp-recon)).
+  Companion reconnaissance CLI for the MCP-server-defense
+  workflow: enumerates a server's tool surface, fuzzes each
+  schema along six adversarial axes, classifies authority against
+  OWASP LLM Top 10 + MITRE ATLAS. As of
+  [v0.2.0](https://github.com/euanmcrosson-dotcom/mcp-recon/releases/tag/v0.2.0)
+  it ships a `mcp-recon caveats` subcommand emitting the
+  `mcp-recon/v0.1/caveats` JSON artifact — a wire-format list of
+  capnagent issuance plans keyed off the classification pass.
+  Different layer (recon vs. enforcement); the two are designed
+  to compose.
 
 ## Empirical methodology
 
