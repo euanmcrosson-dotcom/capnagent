@@ -44,8 +44,10 @@ copy-pasteable caveats: github.com/euanmcrosson-dotcom/mcp-recon.
 homograph, fs path-traversal, etc), and a parallel-agent
 adversarial review of the engine itself surfaced 17 issues, 4
 HIGH severity (sub-ulp numeric coercion bypass, empty-attenuation
-brick, zero-byte audit key, empty-caveat god-mode). v0.5 closes
-3 of 4 (A.1 sub-ulp f64 parked under design discussion).
+brick, zero-byte audit key, empty-caveat god-mode). v0.5
+closed 3 of 4 HIGH; v0.6 closed A.1 in the Rust engine; v0.6.1
+closed the residual JS-layer artefact via verifyWithContextJson —
+**4 of 4 HIGH closed end-to-end as of v0.6.1.**
 
 I'm looking to add a round against a real production stack. If your
 agent surface is interesting, happy to do the integration + write
