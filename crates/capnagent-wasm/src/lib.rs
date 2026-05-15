@@ -359,6 +359,58 @@ impl Verifier {
         to_js(&receipt).map_err(|e| JsError::new(&e.to_string()))
     }
 
+    /// v0.6.1 — same pipeline as `verifyWithContext`, but accepts the
+    /// context as a **raw JSON string** instead of a JS object.
+    ///
+    /// **When to use this variant.** The default `verifyWithContext`
+    /// receives a JS object across the WASM boundary. Because JS's
+    /// `Number` IS f64, any sub-ulp precision past `ulp(value)/2` is
+    /// rounded out before WASM sees the value. That collapses the v0.6
+    /// integer-domain detection on the arg side: an attacker who emits
+    /// `{"amount": 50.000000000000001}` over the wire has the digits
+    /// stripped by JS's JSON parser, so the source-text fact that the
+    /// arg was float-syntactic is lost.
+    ///
+    /// `verifyWithContextJson` takes the JSON **source** instead, so
+    /// `serde_json::from_str` (with `arbitrary_precision` enabled in
+    /// `capnagent-core`) preserves the original number text past the
+    /// boundary. The v0.6 integer-domain rule in
+    /// `caveat_dsl::apply_op` now sees Integer literal vs Float arg
+    /// and rejects.
+    ///
+    /// **Usage.** Wherever you have the original JSON — typically the
+    /// raw HTTP request body, a webhook payload, an LLM tool-call as
+    /// emitted by the model — pass it directly:
+    ///
+    /// ```js
+    /// const ctxJson = req.rawBody;   // NOT req.body parsed by Express
+    /// const receipt = verifier.verifyWithContextJson(cap, ctxJson, auditor);
+    /// ```
+    ///
+    /// If you've already `JSON.parse`-d the data, the precision is
+    /// already gone — use the default `verifyWithContext` for that
+    /// case, and apply the documented `_cents` mitigation against the
+    /// f64-collapse class.
+    ///
+    /// Throws on `VerifyError::Chain` / `VerifyError::Audit` / invalid
+    /// JSON / missing required ctx fields. Caveat denials come back on
+    /// the returned `Receipt`'s `outcome` field, same as
+    /// `verifyWithContext`.
+    #[wasm_bindgen(js_name = "verifyWithContextJson")]
+    pub fn verify_with_context_json(
+        &self,
+        cap: &Capability,
+        ctx_json: &str,
+        auditor: &Auditor,
+    ) -> Result<JsValue, JsError> {
+        let ctx_native = decode_context_from_json_str(ctx_json)?;
+        let receipt = self
+            .inner()?
+            .verify_with_context(&cap.0, &ctx_native, &auditor.0)
+            .map_err(|e| JsError::new(&e.to_string()))?;
+        to_js(&receipt).map_err(|e| JsError::new(&e.to_string()))
+    }
+
     /// Four-gate pipeline (chain → proof → revocation → caveats) for
     /// hok-bound capabilities. `proof` is the raw 64-byte ed25519
     /// signature the holder produced over `challenge`. `challenge` is
@@ -656,21 +708,42 @@ impl Auditor {
 ///   env?: Record<string, string>;
 /// };
 /// ```
+///
+/// NOTE: numeric values inside `args` go through JS's f64 JSON parser
+/// before crossing the WASM boundary, so sub-ulp precision is lost.
+/// For full A.1 protection, pass the raw JSON source through
+/// `verifyWithContextJson` instead. See that method's doc-comment.
 fn decode_context(value: JsValue) -> Result<core::Context, JsError> {
-    use std::collections::HashMap;
+    let parsed: CtxIn = js_to(value).map_err(|e| JsError::new(&e.to_string()))?;
+    ctx_in_to_core(parsed)
+}
+
+/// v0.6.1: decode the context from a raw JSON string. Used by
+/// `verifyWithContextJson` / `verifyWithProofJson` so that
+/// `serde_json::from_str` (which honours `arbitrary_precision` in
+/// `capnagent-core`'s deps) preserves the original number source
+/// text past the parse boundary. The default `decode_context` path
+/// receives a JS object that has ALREADY been through JS's f64
+/// JSON parser, so the source text is gone before we see it.
+fn decode_context_from_json_str(s: &str) -> Result<core::Context, JsError> {
+    let parsed: CtxIn =
+        serde_json::from_str(s).map_err(|e| JsError::new(&format!("invalid context JSON: {e}")))?;
+    ctx_in_to_core(parsed)
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CtxIn {
+    now_ms: Option<u64>,
+    caller: String,
+    tool: String,
+    args: serde_json::Value,
+    env: Option<std::collections::HashMap<String, String>>,
+}
+
+fn ctx_in_to_core(parsed: CtxIn) -> Result<core::Context, JsError> {
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-    #[derive(serde::Deserialize)]
-    #[serde(rename_all = "camelCase")]
-    struct CtxIn {
-        now_ms: Option<u64>,
-        caller: String,
-        tool: String,
-        args: serde_json::Value,
-        env: Option<HashMap<String, String>>,
-    }
-
-    let parsed: CtxIn = js_to(value).map_err(|e| JsError::new(&e.to_string()))?;
     let now = parsed
         .now_ms
         .map(|ms| UNIX_EPOCH + Duration::from_millis(ms))

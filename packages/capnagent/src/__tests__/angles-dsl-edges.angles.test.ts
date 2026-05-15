@@ -143,6 +143,67 @@ describe("angle 1: numeric overflow & precision", () => {
     expect(overBudget.kind).toBe("denied");
   });
 
+  it("[CLOSED v0.6.1] verifyWithContextJson — full A.1 closure when caller has the original JSON", async () => {
+    // v0.6.1 closes the residual JS-layer artefact of A.1 for callers
+    // who have the ORIGINAL JSON source available (e.g. raw HTTP body,
+    // webhook payload, LLM tool-call as-emitted). Passing the JSON
+    // through `verifyWithContextJson` lets the Rust side parse it
+    // with `arbitrary_precision` enabled, preserving the source text
+    // of every number across the WASM boundary.
+    //
+    // Concrete test: the exact A.1 reproducer (`amount:
+    // 50.000000000000001` against `arg.amount <= 50`) is now denied
+    // through the JS layer when the caller hands us the raw JSON.
+    const cap = await issueWithCaveat("arg.amount <= 50");
+    const verifier = new Verifier(ROOT_KEY);
+    const auditor = new Auditor(AUDIT_KEY);
+
+    // CRITICAL: this is the ORIGINAL JSON source. JS hasn't parsed it
+    // yet. The sub-ulp digits are still in the string.
+    const rawCtxJson = JSON.stringify({
+      caller: "agent:planner",
+      tool: "checkout.purchase",
+      nowMs: 1_700_000_000_000,
+      // We have to assemble the JSON manually since JSON.stringify of
+      // an already-parsed JS Number would lose the precision. The
+      // `'/*kept*/'` placeholder marker is just to make the
+      // substitution obvious in the test.
+    }).replace(/}$/, `, "args": {"amount": 50.000000000000001}}`);
+
+    const receipt = verifier.verifyWithContextJson(cap, rawCtxJson, auditor);
+    // v0.6.1: the source text "50.000000000000001" survives across
+    // the WASM boundary; the engine's v0.6 integer-domain rule sees
+    // Integer literal `50` vs Float arg "50.000000000000001" and
+    // rejects with a TypeMismatch which surfaces as outcome.kind ===
+    // "denied" on the receipt.
+    expect(receipt.outcome.kind).toBe("denied");
+    if (receipt.outcome.kind === "denied") {
+      // The deny reason includes the actionable mitigation guidance
+      // from the Rust side (`_cents` form or fractional literal).
+      expect(receipt.outcome.reason.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("[v0.6.1] verifyWithContextJson — safe integer cases still pass through", async () => {
+    // Sanity: a JSON ctx with integer args still verifies normally
+    // through the new entry point. v0.6.1 didn't change the meaning
+    // of safe-shape comparisons; it only closes the unsafe-shape
+    // collapse class.
+    const cap = await issueWithCaveat("arg.amount_cents <= 5000");
+    const verifier = new Verifier(ROOT_KEY);
+    const auditor = new Auditor(AUDIT_KEY);
+
+    const ctxJson = JSON.stringify({
+      caller: "agent:planner",
+      tool: "checkout.purchase",
+      nowMs: 1_700_000_000_000,
+      args: { amount_cents: 1299 },
+    });
+
+    const receipt = verifier.verifyWithContextJson(cap, ctxJson, auditor);
+    expect(receipt.outcome.kind).toBe("allowed");
+  });
+
   it("a value above-ulp from 50 (50.0000000000001) is correctly denied", async () => {
     // Companion to the FINDING above: the DSL is not totally
     // broken. A holder who picks a value with delta > ulp(50)/2

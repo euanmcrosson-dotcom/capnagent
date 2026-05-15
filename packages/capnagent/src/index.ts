@@ -665,6 +665,56 @@ export class Verifier {
   }
 
   /**
+   * v0.6.1 — same pipeline as {@link verifyWithContext}, but accepts
+   * the context as a **raw JSON string** instead of a JS object.
+   *
+   * **When to use this variant.** JS's `Number` IS `f64`, so any JSON
+   * value with sub-ulp precision past `ulp(value)/2` is rounded out
+   * by `JSON.parse` before WASM sees the object. That collapse defeats
+   * the v0.6 integer-domain detection on arg values: an attacker who
+   * emits `{"amount": 50.000000000000001}` over the wire has the
+   * digits stripped by JS, so the source-text fact that the arg was
+   * float-syntactic is lost.
+   *
+   * `verifyWithContextJson` takes the JSON *source* instead, so the
+   * Rust side's `serde_json::from_str` (with `arbitrary_precision`
+   * enabled in `capnagent-core`) preserves the original number text
+   * past the WASM boundary. The v0.6 integer-domain rule then sees
+   * Integer literal vs Float arg and rejects.
+   *
+   * **Usage.** Wherever you have the original JSON — typically the
+   * raw HTTP request body, a webhook payload, or an LLM tool-call as
+   * emitted by the model — pass it directly:
+   *
+   * ```ts
+   * // ✓ correct: preserves source text
+   * const ctxJson = req.rawBody as string;
+   * const receipt = verifier.verifyWithContextJson(cap, ctxJson, auditor);
+   *
+   * // ✗ won't help: JS already collapsed the f64
+   * const ctxJson = JSON.stringify(JSON.parse(req.rawBody));
+   * verifier.verifyWithContextJson(cap, ctxJson, auditor);
+   * ```
+   *
+   * If you've already `JSON.parse`-d the data, the precision is gone
+   * — use {@link verifyWithContext} for that case and apply the
+   * documented `_cents` mitigation against the f64-collapse class.
+   *
+   * @param cap capability to verify
+   * @param ctxJson raw JSON text encoding a `Context` (camelCase keys)
+   * @param auditor receipt-signing auditor
+   */
+  verifyWithContextJson(cap: Capability, ctxJson: string, auditor: Auditor): Receipt {
+    ensureReady();
+    try {
+      const raw = this._inner.verifyWithContextJson(cap._inner, ctxJson, auditor._inner);
+      return rawReceiptToReceipt(raw);
+    } catch (e) {
+      mapWasmError(e, "either");
+    }
+  }
+
+  /**
    * Holder-of-key verification: chain → proof → revocation → caveats.
    *
    * Required entry point for capabilities that were bound with

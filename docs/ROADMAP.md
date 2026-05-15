@@ -12,12 +12,12 @@ realistic, not aspirational.
 
 ---
 
-## v0.6 — A.1 closure (Rust engine; JS-layer follow-on tracked)
+## v0.6 — A.1 closure (Rust engine + v0.6.1 JS-layer follow-on)
 
-**Status: SHIPPED 2026-05-15.** Closes the engine-side path of the
-A.1 sub-ulp f64 numeric coercion finding. A JS-layer follow-on
-(WASM API change to preserve JSON source text across the boundary)
-is tracked for v0.6.1 / v0.7.
+**Status: SHIPPED 2026-05-15 (v0.6.0 + v0.6.1).** Closes A.1 end-to-end:
+- v0.6.0 closed the engine-side path (Rust DSL evaluator).
+- v0.6.1 closed the JS-layer path (`Verifier.verifyWithContextJson`
+  API; callers who hand us the raw JSON get full protection).
 
 **Design call locked:** integer-domain mode, source-text tracking.
 The DSL now distinguishes integer-syntactic numeric values (literals
