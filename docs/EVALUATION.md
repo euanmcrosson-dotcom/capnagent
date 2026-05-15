@@ -79,19 +79,35 @@ which are HIGH severity. Each angle is a `.angles.test.ts` file:
 npm test -w @capnagent/core -- angles
 ```
 
-Findings tagged `[FINDING]` (the open finding) or `[CLOSED v0.5]`
-(the post-fix assertion) are searchable:
+Findings tagged `[FINDING]` (an open finding) or
+`[CLOSED v0.5]` / `[CLOSED v0.6]` / `[CLOSED v0.6.1]` (post-fix
+assertions) are searchable:
 
 ```bash
-# Open findings (only A.1 should remain)
+# All open findings (any severity)
 grep -r "\[FINDING\]" packages/capnagent/src/__tests__/angles-*.angles.test.ts
 
-# Closed findings (B.2, B.3, C.5)
-grep -r "\[CLOSED v0.5\]" packages/capnagent/src/__tests__/angles-*.angles.test.ts
+# Closed findings by version
+grep -rE "\[CLOSED v0\.(5|6|6\.1)\]" packages/capnagent/src/__tests__/angles-*.angles.test.ts
 ```
 
-The full finding list with severity is in
-[`CHANGELOG.md`](../CHANGELOG.md) under commit `805329e`.
+**Status as of v0.6.1:** all 4 HIGH-severity angle findings are
+closed end-to-end. Some MEDIUM/LOW findings (e.g. NUL bytes
+accepted inside DSL string literals — log-truncation risk only)
+remain open and are tracked as `[FINDING]` markers in the angles
+test files.
+
+| ID | Description | Closed in |
+|----|------------|-----------|
+| **A.1** | Sub-ulp f64 collapse — `arg.amount <= 50` admits `50.000000000000001` | **v0.6** (Rust DSL evaluator tracks source-text `NumKind`, refuses Integer-literal vs Float-arg comparison) + **v0.6.1** (`Verifier.verifyWithContextJson` so JS callers get the same protection across the WASM boundary) |
+| **B.2** | `cap.attenuate("")` produces silent permanent-deny token | v0.5 (pre-validates predicate parses at attenuate time) |
+| **B.3** | Auditor accepts zero-byte HMAC key | v0.5 (`Auditor::new` panics with sub-`MIN_AUDIT_KEY_LEN` key) |
+| **C.5** | Empty-caveat capability is god-mode | v0.5 (`CapabilityBuilder::build` rejects zero-caveat tokens) |
+
+The full finding list with severity and original `[FINDING]`
+locations is in [`CHANGELOG.md`](../CHANGELOG.md) under commit
+`805329e` (initial angles run) and the v0.6 / v0.6.1 entries
+(A.1 closure).
 
 ---
 
