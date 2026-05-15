@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed (py-v0.7.4 — workspace version aligned with Python release tags)
+
+- **Workspace version bumped `0.0.1` → `0.7.4`.** The Python binding
+  inherits `version.workspace = true`, so until now PyPI saw
+  `capnagent==0.0.1` even though git tags were `py-v0.7.x`. That
+  mismatch was confusing for users (`pip install` reported 0.0.1
+  while the GitHub release said 0.7.3). Bumping the workspace
+  aligns the entire Rust + Python surface at `0.7.4`.
+- Affects `capnagent-core`, `capnagent-wasm`, and `capnagent-py`
+  Cargo crates — all now report `0.7.4`. The TypeScript / WASM
+  bindings consume the WASM crate locally, so the workspace bump
+  is invisible from the JS side. The PyPI-published `capnagent`
+  package now matches `0.7.4`.
+- **No code changes** beyond the version numbers themselves and
+  the cross-crate `version = "0.0.1"` → `"0.7.4"` constraints in
+  the WASM and Python crate manifests. Behaviour is byte-identical
+  to py-v0.7.3.
+
 ### Changed (py-v0.7.2 — slim publish workflow + first wheel-producing release)
 
 - **Dropped `macos-x86_64` from `publish-pypi.yml`.** The `macos-13`
