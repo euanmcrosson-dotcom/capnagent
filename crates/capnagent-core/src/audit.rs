@@ -81,6 +81,34 @@ pub struct Receipt {
     pub signature: Vec<u8>,
 }
 
+impl Receipt {
+    /// Parse a JSON-encoded receipt produced by `Auditor::sign`.
+    ///
+    /// v0.7.1 — convenience for callers that round-trip receipts through
+    /// strings (HTTP bodies, log lines, message-queue payloads). Backed
+    /// by `serde_json::from_str` against the existing `Deserialize`
+    /// derive on `Receipt`; no schema drift.
+    ///
+    /// Round-trips against the signed canonical-JSON bytes via:
+    ///
+    /// ```text
+    /// receipt → serde_json::to_string → Receipt::from_json → Auditor::verify
+    /// ```
+    ///
+    /// Failure modes:
+    ///
+    /// - `Err(_)` on any JSON parse error (malformed bytes, missing
+    ///   required field, wrong type for `version`/`outcome.kind`/etc).
+    ///   The caller should treat this exactly as they would a
+    ///   tampered-with receipt — fail-closed.
+    /// - The returned `Receipt`'s signature is NOT verified here; only
+    ///   structure is checked. To verify integrity, call
+    ///   `Auditor::verify(&receipt)`.
+    pub fn from_json(s: &str) -> Result<Self, serde_json::Error> {
+        serde_json::from_str(s)
+    }
+}
+
 /// Non-secret summary of the call context at verification time.
 ///
 /// `args_hash` is `Context::args_hash()` — a SHA-256 hex of the canonical

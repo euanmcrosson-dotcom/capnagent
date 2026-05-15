@@ -1,0 +1,155 @@
+name: publish-pypi
+
+# Builds platform wheels for capnagent-py and uploads to PyPI when a
+# Python-binding release is published. The workflow only runs on tags
+# matching `py-v*` (not on `v*` tags which mark Rust-core / WASM releases)
+# so the Python binding has its own independent version stream.
+#
+# To publish:
+#   1. Bump `crates/capnagent-py/pyproject.toml` version + push.
+#   2. `git tag py-v0.7.1 && git push --tags`.
+#   3. Create a GitHub Release pointing at the tag (this fires the
+#      `release: published` trigger below).
+#
+# Requires the `PYPI_API_TOKEN` repo secret to be set with `upload`
+# scope on the `capnagent` project on PyPI. The upload step is guarded
+# so the workflow no-ops cleanly when the secret is absent (wheels are
+# still produced as workflow artifacts for manual upload).
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Upload to PyPI (requires PYPI_API_TOKEN secret)"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "true"
+          - "false"
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # ─── platform wheel jobs ─────────────────────────────────────────
+
+  linux:
+    name: wheel (linux-x86_64)
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/py-v') || github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: PyO3/maturin-action@v1
+        with:
+          target: x86_64-unknown-linux-gnu
+          args: --release --out dist
+          working-directory: crates/capnagent-py
+          manylinux: auto
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels-linux-x86_64
+          path: crates/capnagent-py/dist/*.whl
+
+  windows:
+    name: wheel (windows-x86_64)
+    runs-on: windows-latest
+    if: startsWith(github.ref, 'refs/tags/py-v') || github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: PyO3/maturin-action@v1
+        with:
+          target: x86_64-pc-windows-msvc
+          args: --release --out dist
+          working-directory: crates/capnagent-py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels-windows-x86_64
+          path: crates/capnagent-py/dist/*.whl
+
+  macos-arm:
+    name: wheel (macos-arm64)
+    runs-on: macos-14  # apple-silicon runner
+    if: startsWith(github.ref, 'refs/tags/py-v') || github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: PyO3/maturin-action@v1
+        with:
+          target: aarch64-apple-darwin
+          args: --release --out dist
+          working-directory: crates/capnagent-py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels-macos-arm64
+          path: crates/capnagent-py/dist/*.whl
+
+  macos-x86:
+    name: wheel (macos-x86_64)
+    runs-on: macos-13  # x86_64 mac runner (last x86 macOS image)
+    if: startsWith(github.ref, 'refs/tags/py-v') || github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: PyO3/maturin-action@v1
+        with:
+          target: x86_64-apple-darwin
+          args: --release --out dist
+          working-directory: crates/capnagent-py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels-macos-x86_64
+          path: crates/capnagent-py/dist/*.whl
+
+  # ─── sdist (one source build, no platform dep) ───────────────────
+
+  sdist:
+    name: sdist
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/py-v') || github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: PyO3/maturin-action@v1
+        with:
+          command: sdist
+          args: --out dist
+          working-directory: crates/capnagent-py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdist
+          path: crates/capnagent-py/dist/*.tar.gz
+
+  # ─── upload to PyPI ──────────────────────────────────────────────
+
+  publish:
+    name: publish to PyPI
+    needs: [linux, windows, macos-arm, macos-x86, sdist]
+    runs-on: ubuntu-latest
+    # Only fire when triggered by a release-published event (NOT a bare
+    # workflow_dispatch — that's for manual wheel-builds without publish),
+    # AND only if we have a token. The token check is a no-op-skip rather
+    # than a hard fail so the wheels remain available as artifacts even
+    # when the secret hasn't been configured yet.
+    if: github.event_name == 'release' && startsWith(github.ref, 'refs/tags/py-v')
+    environment: pypi
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+          path: dist
+
+      - name: Notice if no token
+        if: env.PYPI_API_TOKEN == ''
+        env:
+          PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+        run: echo "::warning::PYPI_API_TOKEN secret not set; skipping upload."
+
+      - name: Publish to PyPI
+        if: env.PYPI_API_TOKEN != ''
+        uses: PyO3/maturin-action@v1
+        env:
+          MATURIN_PYPI_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+          PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+        with:
+          command: upload
+          args: --non-interactive --skip-existing dist/*
