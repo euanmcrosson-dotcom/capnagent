@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (v0.6.1 — full A.1 closure across the JS layer)
+
+- **`Verifier.verifyWithContextJson(cap, ctxJson, auditor)`** —
+  new public API that accepts the context as a raw JSON string
+  instead of a JS object. Closes the residual JS-layer artefact
+  of A.1: when callers have the original JSON source (raw HTTP
+  body, webhook payload, LLM tool-call as-emitted), passing it
+  directly preserves sub-ulp digits across the WASM boundary so
+  the v0.6 integer-domain rule in `caveat_dsl::apply_op` can
+  fire on the arg side.
+- **WASM-side `decode_context_from_json_str`** — uses
+  `serde_json::from_str` (honours `arbitrary_precision` from
+  `capnagent-core` deps) to preserve number source text. The
+  default `decode_context` path remains unchanged for
+  backwards-compat with callers passing JS objects.
+- **2 new TS tests** in `angles-dsl-edges.angles.test.ts`:
+  - `[CLOSED v0.6.1] verifyWithContextJson — full A.1 closure` —
+    the exact A.1 reproducer (`amount: 50.000000000000001` against
+    `arg.amount <= 50`) is now denied through the JS layer when
+    the caller uses the new entry point.
+  - Sanity test confirming safe integer cases still pass through.
+
+After v0.6.1 the corpus reads: **4 HIGH found, 4 HIGH closed — both
+in the engine AND across the JS layer for callers who use the
+JSON-string entry point.** The `verifyWithContext` (JS-object)
+entry point retains the JS-layer collapse class; mitigation is the
+documented `_cents` form.
+
 ### Added (v0.6.0 — A.1 sub-ulp f64 closure)
 
 - **Closes [angle finding A.1](docs/ROADMAP.md): sub-ulp f64 numeric
