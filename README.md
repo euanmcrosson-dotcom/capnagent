@@ -36,14 +36,40 @@ Anthropic SDK is asked to send a $30 wire **and** buy a USB-C cable.
 Issued capability scopes the agent to `tool == "checkout.purchase"`.
 Wire denied at the gate; cable proceeds; both decisions audit-logged.
 
-## Companion project: [mcp-recon](https://github.com/euanmcrosson-dotcom/mcp-recon)
+## Companion projects: a three-layer agent-security stack
 
-capnagent is the *defensive* side of the MCP-security workflow.
-The *reconnaissance* side is [mcp-recon](https://github.com/euanmcrosson-dotcom/mcp-recon)
-— a CLI that enumerates an MCP server's tool surface, fuzzes each
-tool's schema along six adversarial axes, classifies authority
-against OWASP LLM Top 10 + MITRE ATLAS, and emits a Markdown
-threat profile with a recommended capnagent caveat per tool.
+capnagent is the **authority layer** in a three-tool stack that
+covers different parts of MCP agent security. Each project stands
+alone; together they're defense in depth.
+
+```
+[ mcp-recon ]  →  threat profile  →  [ capnagent ]  →  [ mcp-guard ]
+   "what is        "what is exposed         "what authority    "what action is
+    here?"          and what's the           does the agent     denied at runtime
+                    threat profile?"        actually hold?"     even if the
+                                                                authority slips?"
+```
+
+- **[mcp-recon](https://github.com/euanmcrosson-dotcom/mcp-recon)** —
+  *recon layer*. CLI that enumerates an MCP server's tool surface,
+  fuzzes each tool's schema along six adversarial axes, classifies
+  authority against OWASP LLM Top 10 + MITRE ATLAS, and emits a
+  Markdown threat profile with a recommended capnagent caveat per
+  tool. Run BEFORE you wire a third-party MCP server into your
+  agent.
+- **[mcp-guard](https://github.com/euanmcrosson-dotcom/mcp-guard)** —
+  *runtime-policy layer*. Drop-in deterministic policy library that
+  evaluates each tool call against pattern-derived rules (122 rules
+  across 9 attack classes: indirect injection, SSRF, SQL danger,
+  shell danger, PII exfil, path traversal, etc.). Catches things
+  that slipped past the authority layer — e.g. a capability that
+  permits `send_email` to in-contact recipients but the agent tries
+  to exfil an API key in the body.
+
+capnagent itself is the *authority layer* — capability tokens that
+bound what an agent CAN do at issuance time. Use all three when
+the deployment justifies the layered cost; use just capnagent + a
+runtime check when it doesn't.
 
 ```
 [ mcp-recon ]  →  threat profile  →  [ capnagent ]

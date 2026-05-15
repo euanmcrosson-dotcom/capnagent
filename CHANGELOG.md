@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (v0.5.1 — fs-agent coverage)
+
+- **Closes [issue #1](https://github.com/euanmcrosson-dotcom/mcp-guard/issues/1):
+  `mcp-fs-agent` example now bounds 10 of the 14 official MCP
+  filesystem-server tools (was 3).** The engine was already correct —
+  capnagent denied every unauthorised tool — but the example's
+  threat-profile transparency was incomplete. v0.5.1 fixes that:
+  - **`issueSandboxReadCapability` covers 6 read-side tools** (was 3):
+    `read_file`, `read_text_file`, `list_directory`,
+    `list_directory_with_sizes`, `directory_tree`, `get_file_info`.
+  - **New `issueSandboxWriteCapability`** — separate write-side cap
+    covering 4 tools: `write_file`, `edit_file`, `create_directory`,
+    `move_file`. `move_file` has BOTH `arg.source` and
+    `arg.destination` constrained (so a sandbox file can't be moved
+    out, and an outside file can't be moved in to overwrite a
+    sandboxed target).
+  - **`SANDBOX_READ_TOOLS` and `SANDBOX_WRITE_TOOLS` constants
+    exported** as the single source of truth for the example's
+    coverage.
+  - **4 tools deliberately out of scope** with documented rationale:
+    `read_multiple_files` (array-arg shape vs single-string DSL),
+    `read_media_file` (binary content not modeled),
+    `search_files` (returns paths outside the constrained input
+    root), `list_allowed_directories` (server-configuration
+    metadata, no path arg to constrain — operator-choice to allow
+    unconditionally).
+  - **Cross-capability isolation tested:** read-cap holder cannot
+    pivot to writes, write-cap holder cannot pivot to reads.
+- **`mcp-fs-agent/README.md` rewritten** with a full 14-row tool-
+  coverage table — operators can see exactly which tools are
+  bounded, by which capability, and why each excluded tool is out of
+  scope.
+- **Main `README.md` companion-projects section** restructured to
+  show the three-layer agent-security stack: `mcp-recon` (recon) →
+  `capnagent` (authority) → `mcp-guard` (runtime policy).
+
+### Tests
+
+- `examples/mcp-fs-agent` test count 9 → 30 (+21 v0.5.1 cases).
+  Repo total Rust 242 + TS 346 = **588 tests passing** (was 564).
+
 ### Added
 
 - **Four-agent parallel angles run — 36 angles, 17 real findings, 4

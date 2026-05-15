@@ -19,19 +19,68 @@ server" below.
 
 ## What the issued capability says
 
+The example issues **two distinct capabilities** — one read-side, one
+write-side — so callers can hold either or both, and the principle of
+least authority is preserved by default.
+
 ```text
-identifier: fs.read
-caveats:
-  - caller == "agent:fs"
-  - now <= @2099-01-01T00:00:00Z
-  - (tool == "read_file"      AND arg.path matches "<sandbox>")
- OR (tool == "list_directory" AND arg.path matches "<sandbox>")
- OR (tool == "directory_tree" AND arg.path matches "<sandbox>")
+identifier: fs.read                       identifier: fs.write
+caveats:                                  caveats:
+  - caller == "agent:fs"                    - caller == "agent:fs"
+  - now <= @2099-01-01T00:00:00Z            - now <= @2099-01-01T00:00:00Z
+  - (tool == "read_file"           AND      - (tool == "write_file"        AND
+        arg.path starts_with "<dir>" OR         arg.path starts_with "<dir>" OR
+        arg.path == "<exact>")                  arg.path == "<exact>")
+ OR (tool == "read_text_file"      AND  OR (tool == "edit_file"         AND
+        arg.path starts_with …)                 arg.path starts_with …)
+ OR (tool == "list_directory"      AND  OR (tool == "create_directory"  AND
+        arg.path starts_with …)                 arg.path starts_with …)
+ OR (tool == "list_directory_with_sizes" OR (tool == "move_file" AND
+        AND arg.path starts_with …)             arg.source starts_with …
+ OR (tool == "directory_tree"      AND          AND arg.destination starts_with …)
+        arg.path starts_with …)
+ OR (tool == "get_file_info"       AND
+        arg.path starts_with …)
 ```
 
-There is no clause permitting `write_file`, `create_directory`, or
-`delete_path`. Those are denied at the caveat-evaluation gate before
-the underlying client is invoked.
+## Tool-coverage table
+
+The official `@modelcontextprotocol/server-filesystem` exposes 14
+tools. v0.5.1 of this example bounds 10 of them across the two
+capabilities; the other 4 are deliberately out of scope and
+documented below.
+
+| # | Tool | Bounded by | Status |
+|---|---|---|---|
+| 1 | `read_file` | read cap | ✅ allowed inside sandbox, denied outside |
+| 2 | `read_text_file` | read cap | ✅ allowed inside sandbox, denied outside (alias of read_file) |
+| 3 | `list_directory` | read cap | ✅ allowed inside sandbox, denied outside |
+| 4 | `list_directory_with_sizes` | read cap | ✅ allowed inside sandbox, denied outside |
+| 5 | `directory_tree` | read cap | ✅ allowed inside sandbox, denied outside |
+| 6 | `get_file_info` | read cap | ✅ allowed inside sandbox, denied outside |
+| 7 | `write_file` | write cap | ✅ allowed inside sandbox, denied outside |
+| 8 | `edit_file` | write cap | ✅ allowed inside sandbox, denied outside |
+| 9 | `create_directory` | write cap | ✅ allowed inside sandbox, denied outside |
+| 10 | `move_file` | write cap | ✅ allowed when **both** source and destination are inside sandbox |
+| 11 | `read_multiple_files` | — | 🚫 denied by default — array-of-paths arg, DSL works on single-string args. Loop `read_file` instead. |
+| 12 | `read_media_file` | — | 🚫 denied by default — binary content not modeled in this stub. |
+| 13 | `search_files` | — | 🚫 denied by default — returns paths anywhere under the input root, which would broaden the sandbox to "whatever search can find." |
+| 14 | `list_allowed_directories` | — | 🚫 denied by default — server-configuration metadata, no path arg to constrain. Operator can allow unconditionally if desired. |
+
+The example also defines `delete_path` (not in the official server),
+which is denied unconditionally by absence of any clause permitting it.
+
+## How the engine enforces this
+
+There is no clause permitting any of the "denied" tools. Those are
+refused at the caveat-evaluation gate before the underlying client is
+invoked. The READ capability has no write clause; the WRITE capability
+has no read clause. An agent that holds only one cannot pivot to the
+other.
+
+The address-only attack class (issue #1) is closed: an operator
+reading this README sees exactly which tools are bounded, which are
+deliberately denied, and the rationale for each — no silent gap.
 
 ## Run it
 
