@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed (py-v0.7.2 — slim publish workflow + first wheel-producing release)
+
+- **Dropped `macos-x86_64` from `publish-pypi.yml`.** The `macos-13`
+  GitHub Actions runner pool is being deprecated and queued for 20+
+  minutes on `py-v0.7.1` without ever starting, blocking the rest of
+  the workflow. New Mac hardware is exclusively Apple Silicon (arm64);
+  the maintenance vs. yield case for x86_64 macOS wheels is poor.
+  macOS x86_64 users can `pip install --no-binary capnagent` to build
+  from the sdist (always works because the Rust core is portable).
+- **py-v0.7.2 is the first tag that produces distributable wheels.**
+  py-v0.7.1 shipped the code (Receipt::from_json, Auditor round-trip,
+  publish-pypi.yml) but its workflow run got stuck on the
+  macOS-13 queue and was cancelled. py-v0.7.2 contains zero Python
+  API changes vs py-v0.7.1 — same `capnagent` package surface.
+
 ### Added (v0.7.1 — `Auditor.verify` round-trip + PyPI publish workflow)
 
 - **`Receipt::from_json(s: &str)` on `capnagent-core`** — convenience
