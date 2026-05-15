@@ -20,7 +20,7 @@
 //! from capnagent import Issuer, Verifier, Auditor
 //! ```
 
-#![allow(missing_docs)]  // Each #[pyclass] is documented via Python __doc__.
+#![allow(missing_docs)] // Each #[pyclass] is documented via Python __doc__.
 
 use capnagent_core as core;
 use pyo3::exceptions::{PyRuntimeError, PyValueError};

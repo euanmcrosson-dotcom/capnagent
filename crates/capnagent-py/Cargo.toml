@@ -25,6 +25,8 @@ capnagent-core = { path = "../capnagent-core" }
 # PyO3 itself. `abi3-py38` keeps the produced wheel compatible with
 # CPython 3.8+ via the stable Python ABI — one wheel per platform
 # instead of one wheel per (platform, python-minor-version).
-pyo3 = { version = "0.22", features = ["extension-module", "abi3-py38"] }
+# RUSTSEC-2025-0020: PyString::from_object pre-0.24.1 forwarded &str
+# args to the Python C API without nul-byte termination. Pinned >=0.24.1.
+pyo3 = { version = "0.24.1", features = ["extension-module", "abi3-py38"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "=1.0.140", features = ["arbitrary_precision"] }
