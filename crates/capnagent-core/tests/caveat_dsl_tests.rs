@@ -666,27 +666,93 @@ fn rejects_negative_leading_dot() {
 }
 
 // ─── Cross-type comparisons: int caveat ↔ decimal arg ─────────────────
+//
+// v0.6 — A.1 closure: integer-syntactic caveat literal vs float-syntactic
+// arg is now a TypeMismatch error (it used to silently coerce both sides
+// to f64 and compare, which let a sub-ulp-collapse exploit slip past).
+// Operators who want to accept fractional amounts under a numeric cap
+// must opt in EITHER by using a fractional caveat literal
+// (`arg.amount <= 50.0`) OR by switching to an integer-cents arg shape
+// (`arg.amount_cents <= 5000`). See `apply_op` doc-comment.
 
 #[test]
-fn integer_caveat_vs_decimal_arg_under_threshold() {
-    // The headline v0.1 case: an LLM emits `12.99` for a $12.99 item,
-    // capability caps spend at `<= 50`. Must allow.
+fn v0_6_integer_caveat_rejects_decimal_arg_under_threshold() {
+    // v0.5 and earlier: allowed (LLM emits 12.99 for a $12.99 item).
+    // v0.6: rejected — the caveat literal is integer-syntactic, so a
+    // float-syntactic arg cannot be safely compared (A.1 risk class).
     let p = parse("arg.amount <= 50").unwrap();
+    let mut ctx = empty_ctx();
+    ctx.args = serde_json::json!({"amount": 12.99});
+    let err = evaluate(&p, &ctx).unwrap_err();
+    assert!(matches!(err, DslError::TypeMismatch { .. }), "{err:?}");
+}
+
+#[test]
+fn v0_6_integer_caveat_rejects_decimal_arg_over_threshold() {
+    // Same v0.6 rule applies regardless of whether the value would
+    // have allowed or denied under the old f64-coercion semantics.
+    let p = parse("arg.amount <= 50").unwrap();
+    let mut ctx = empty_ctx();
+    ctx.args = serde_json::json!({"amount": 75.5});
+    let err = evaluate(&p, &ctx).unwrap_err();
+    assert!(matches!(err, DslError::TypeMismatch { .. }), "{err:?}");
+}
+
+#[test]
+fn v0_6_integer_caveat_with_integer_arg_still_works() {
+    // The common safe case: integer caveat + integer arg → exact
+    // integer comparison via f64 (lossless below 2^53).
+    let p = parse("arg.amount <= 50").unwrap();
+    let mut ctx = empty_ctx();
+    ctx.args = serde_json::json!({"amount": 13});
+    assert!(evaluate(&p, &ctx).unwrap());
+}
+
+#[test]
+fn v0_6_integer_caveat_escape_hatch_via_fractional_literal() {
+    // For operators who actually want "allow fractional amounts under
+    // 50", v0.6's escape hatch is: write `<= 50.0` (fractional literal,
+    // marks the caveat side as float-syntactic). Both sides float =>
+    // existing f64 semantics, no A.1 rule fires.
+    let p = parse("arg.amount <= 50.0").unwrap();
     let mut ctx = empty_ctx();
     ctx.args = serde_json::json!({"amount": 12.99});
     assert!(evaluate(&p, &ctx).unwrap());
 }
 
 #[test]
-fn integer_caveat_vs_decimal_arg_over_threshold() {
+fn v0_6_integer_caveat_escape_hatch_via_cents_form() {
+    // The other escape hatch: switch to integer-cents semantics.
+    // Operator writes the cap in cents; the agent's tool exposes
+    // `amount_cents`. Holder sends an integer; comparison is exact.
+    let p = parse("arg.amount_cents <= 5000").unwrap();
+    let mut ctx = empty_ctx();
+    ctx.args = serde_json::json!({"amount_cents": 1299});
+    assert!(evaluate(&p, &ctx).unwrap());
+}
+
+#[test]
+fn v0_6_sub_ulp_collapse_a1_closed() {
+    // The exact A.1 finding from `angles-dsl-edges.angles.test.ts`,
+    // reproduced as a Rust unit test. Holder emits
+    // `50.000000000000001` (16 digits past decimal). serde_json
+    // (with arbitrary_precision) keeps the source text "50.000000000000001";
+    // f64 coercion yields bit-identical 50.0. v0.5 and earlier
+    // silently admitted this; v0.6 rejects because the source text
+    // marks the arg as float-syntactic.
     let p = parse("arg.amount <= 50").unwrap();
     let mut ctx = empty_ctx();
-    ctx.args = serde_json::json!({"amount": 75.5});
-    assert!(!evaluate(&p, &ctx).unwrap());
+    ctx.args = serde_json::from_str(r#"{"amount": 50.000000000000001}"#).unwrap();
+    let err = evaluate(&p, &ctx).unwrap_err();
+    assert!(matches!(err, DslError::TypeMismatch { .. }), "{err:?}");
 }
 
 #[test]
 fn decimal_caveat_vs_integer_arg_under_threshold() {
+    // The REVERSE direction (fractional caveat, integer arg) is
+    // deliberately kept working: LLMs often emit integers in JSON
+    // when an operator's caveat is fractional. No A.1 risk here —
+    // an integer JSON arg is exact-precision below 2^53.
     let p = parse("arg.amount <= 50.5").unwrap();
     let mut ctx = empty_ctx();
     ctx.args = serde_json::json!({"amount": 13});

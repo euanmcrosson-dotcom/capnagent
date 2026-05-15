@@ -12,38 +12,72 @@ realistic, not aspirational.
 
 ---
 
-## v0.6 — A.1 closure
+## v0.6 — A.1 closure (Rust engine; JS-layer follow-on tracked)
 
-**Goal: close the last open HIGH severity angle finding.**
+**Status: SHIPPED 2026-05-15.** Closes the engine-side path of the
+A.1 sub-ulp f64 numeric coercion finding. A JS-layer follow-on
+(WASM API change to preserve JSON source text across the boundary)
+is tracked for v0.6.1 / v0.7.
 
-A.1 is sub-ulp f64 numeric coercion: `arg.amount <= 50` admits a
-holder whose `amount` is `50.000000000000001`. The fix is an
-API-shape decision worth taking time on rather than rushing into
-v0.5.
+**Design call locked:** integer-domain mode, source-text tracking.
+The DSL now distinguishes integer-syntactic numeric values (literals
+without a fractional part; JSON numbers whose source text contains
+no `.`/`e`/`E`) from float-syntactic ones. When an ordering or
+equality comparison sees an integer-syntactic caveat literal vs a
+float-syntactic arg, it errors out with an actionable message
+rather than silently coercing.
 
-The plan:
+Alternative considered (unit-typed numerics: `_usd` carries decimal
+precision, `_cents` carries integer precision): rejected for v0.6
+on the principle that simpler DSL surface = smaller attack surface
+in a security-critical path. The integer-domain approach reuses
+existing `Unit` machinery and adds one structural field (`NumKind`)
+instead of a new parser-level type lattice.
 
-- **Decision (week 1):** integer-only mode is the leading
-  candidate. Caveats with monetary intent become
-  `arg.amount_cents <= 5000` instead of `arg.amount <= 50`. The
-  DSL gains a hard-rejection rule for f64 literals on the rhs of
-  `<=` / `>=` / `<` / `>` / `==` against `arg.amount`-shaped
-  paths. Alternative under consideration: a unit-typed numeric
-  system where `_usd` literals carry decimal precision and `_cents`
-  carry integer precision.
-- **Implementation (week 2):** Rust core + WASM wrapper + DSL
-  proptests + invert the A.1 angle test from `[FINDING]` to
-  `[CLOSED v0.6]`.
-- **Documentation (week 2):** update `caveat_dsl.rs` doc comment;
-  add a section to `EVALUATION.md` with the falsifier; cross-
-  reference from `SECURITY-POSTURE.md`.
+**What shipped in the engine (Rust):**
 
-After v0.6 the corpus reads "4 HIGH found, 4 HIGH closed" —
-which is the line that lands in any senior conversation about
-angles findings.
+- `serde_json` `arbitrary_precision` feature enabled — JSON number
+  source text is preserved past parse time.
+- `Value::Number` widened to `(f64, Option<Unit>, NumKind)` — third
+  field tracks Integer vs Float syntactic shape.
+- `parse_number` marks literals based on whether `.` was parsed.
+- `json_to_value` marks args based on whether the JSON source
+  contains `.`/`e`/`E`.
+- `apply_op` rejects (Integer literal × Float arg) for ordering
+  and equality ops with a clear error explaining the two mitigations:
+  (a) use a fractional literal (`<= 50.0`) if you actually want
+  approximate semantics; (b) use the `_cents` form
+  (`arg.amount_cents <= 5000`) for exact integer semantics.
 
-**Estimated time-to-ship:** 2 weeks from design lock. Will not
-ship without an explicit design call.
+**What ships in tests:**
+
+- 6 new Rust integration tests in `caveat_dsl_tests.rs`:
+  - `v0_6_integer_caveat_rejects_decimal_arg_under_threshold`
+  - `v0_6_integer_caveat_rejects_decimal_arg_over_threshold`
+  - `v0_6_integer_caveat_with_integer_arg_still_works`
+  - `v0_6_integer_caveat_escape_hatch_via_fractional_literal`
+  - `v0_6_integer_caveat_escape_hatch_via_cents_form`
+  - `v0_6_sub_ulp_collapse_a1_closed`
+- TS angle test `angles-dsl-edges.angles.test.ts`: A.1 entry
+  renamed `[CLOSED-PARTIAL v0.6]` with detailed comment explaining
+  the JS-layer collapse. New companion test demonstrates the
+  `_cents` mitigation end-to-end through the JS layer.
+
+**What's deliberately deferred (v0.6.1 / v0.7):**
+
+The JS-layer collapse — `JSON.parse("50.000000000000001")` in
+JavaScript yields f64 `50.0` before any of capnagent's code runs —
+is environmental, not engine-side. To get full A.1 protection for
+JS callers, the WASM API needs to accept ctx args as a JSON string
+(so the original source text survives across the boundary). That's
+a meaningful API addition tracked as a follow-on. Mitigation today
+for JS callers: use the `_cents` form, which sidesteps the issue
+because both sides are integer-syntactic.
+
+**Corpus status:** 4 HIGH found, **4 HIGH closed in the engine.**
+The angle finding remains documented for transparency about the
+JS-layer artefact, with the closure clearly attributed to the Rust
+DSL evaluator.
 
 ---
 

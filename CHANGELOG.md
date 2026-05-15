@@ -7,6 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (v0.6.0 — A.1 sub-ulp f64 closure)
+
+- **Closes [angle finding A.1](docs/ROADMAP.md): sub-ulp f64 numeric
+  coercion silently admits sub-ulp-greater holder values.** The DSL
+  evaluator now tracks the syntactic shape of every numeric value
+  (Integer vs Float, based on source text) and refuses to compare
+  an integer-syntactic caveat literal against a float-syntactic arg
+  for ordering or equality operators. Engine-side closure; JS-layer
+  follow-on tracked for v0.6.1 / v0.7 (see ROADMAP).
+- **`Value::Number` widened to carry a third `NumKind` field** —
+  internal structural change. Public API unaffected.
+- **`serde_json` `arbitrary_precision` feature enabled in
+  `capnagent-core`** so JSON number source text is preserved past
+  parse time. Required for the integer-vs-float detection on
+  arg-derived values.
+- **6 new Rust integration tests** in `crates/capnagent-core/tests/
+  caveat_dsl_tests.rs` covering: integer caveat × decimal arg
+  rejection in both threshold directions, integer × integer still
+  works, fractional-literal escape hatch (`<= 50.0`), cents-form
+  escape hatch (`arg.amount_cents <= 5000`), and the exact A.1
+  sub-ulp finding (`50.000000000000001` against `<= 50` now errors).
+- **TS angle test updated** with a detailed comment explaining the
+  JS-layer pre-collapse and the recommended `_cents` mitigation
+  for JS callers; new companion test demonstrates the mitigation
+  end-to-end.
+
+### Migration (v0.6)
+
+Existing caveats and args that were doing the SAFE thing
+(integer × integer, fractional × fractional) continue to work
+unchanged.
+
+Existing caveats that were doing the UNSAFE thing (integer caveat
+literal `<= 50` admitting fractional holder values) will now error
+out with `TypeMismatch`. The error message documents the two
+mitigations:
+
+1. **Use a fractional literal** if you actually want approximate
+   semantics: rewrite `arg.amount <= 50` as `arg.amount <= 50.0`.
+2. **Use the `_cents` form** if you want exact integer semantics:
+   rewrite `arg.amount <= 50` as `arg.amount_cents <= 5000` and
+   have the agent's tool expose `amount_cents` instead of `amount`.
+
+Choose (2) for monetary intent; that's the recommended pattern
+documented in the live shopping-agent demo.
+
 ### Added (v0.5.1 — fs-agent coverage)
 
 - **Closes [issue #1](https://github.com/euanmcrosson-dotcom/mcp-guard/issues/1):

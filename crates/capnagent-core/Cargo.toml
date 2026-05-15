@@ -18,7 +18,16 @@ serde = { version = "1", features = ["derive"] }
 # float-formatting crate, replacing ryu), but its unsigned build.rs is
 # blocked by Windows AppLocker on dev machines. Revisit when toolchains
 # allow signed build scripts or when AppLocker policy is updated.
-serde_json = "=1.0.140"
+# `arbitrary_precision`: preserves the source text of JSON numbers
+# rather than collapsing them to f64 at parse time. This is load-
+# bearing for the v0.6 A.1 closure — a holder that emits
+# `amount: 50.000000000000001` (16 digits past decimal, collapses to
+# bit-identical f64 50.0) can no longer slip past
+# `arg.amount <= 50`, because the DSL evaluator now sees the original
+# fractional source-form and rejects an integer-domain caveat against
+# a float-syntactic arg. See `caveat_dsl.rs::json_to_value` for the
+# precise check.
+serde_json = { version = "=1.0.140", features = ["arbitrary_precision"] }
 base64 = "0.22"
 thiserror = "1"
 subtle = "2"
