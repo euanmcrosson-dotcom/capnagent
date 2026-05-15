@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/capnagent-core", "crates/capnagent-wasm"]
+members = ["crates/capnagent-core", "crates/capnagent-wasm", "crates/capnagent-py"]
 resolver = "2"
 
 [workspace.package]

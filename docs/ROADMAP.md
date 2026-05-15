@@ -81,7 +81,22 @@ DSL evaluator.
 
 ---
 
-## v0.7 — Round 11 against a real production stack
+## v0.7 — Python bindings (PyO3 + maturin)
+
+**Status: SHIPPED 2026-05-15.** New `capnagent-py` crate exposes the
+core engine as a Python package. Same Rust core, different language
+surface. abi3-py38 wheel covers CPython 3.8 through 3.13+; 8 Python
+tests pass; example script walks allow → deny → audit verification;
+the A.1 closure works end-to-end through the Python binding by
+default (Python's `json.dumps` doesn't have JS's f64-collapse
+problem).
+
+**Distribution path:** the maturin-built wheel is reproducible
+locally but not yet published to PyPI. The follow-on is wiring a
+GitHub Action that builds wheels for linux-x86_64, macOS-arm64,
+windows-x86_64 and uploads on a `v0.7.*` tag — tracked as v0.7.1.
+
+## v0.8 — Round 11 against a real production stack
 
 **Goal: replace the strongest single PR claim ("we red-teamed our
 own engine") with the next-strongest one ("we red-teamed [partner

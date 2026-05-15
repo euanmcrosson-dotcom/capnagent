@@ -7,53 +7,49 @@
 ## Title (≤80 chars)
 
 ```
-Show HN: Capnagent + mcp-recon — defensive engine and offensive companion for MCP
+Show HN: Capnagent — capability tokens for AI agent tool calls, 4/4 HIGH closed
 ```
+
+Alternates:
+
+- `Show HN: I red-teamed my own capability-token engine — 17 findings, 4/4 HIGH closed`
+- `Show HN: Three-layer agent security stack — recon, capability tokens, runtime policy`
 
 ## Body (paste as the first comment on the post)
 
 ```
-Hi HN — two related projects shipping together:
+Hi HN — capnagent is a public purple-team harness for MCP servers
+and AI-agent tool surfaces, plus the Rust capability-token engine
+underneath. Macaroon-style chains, ed25519 holder-of-key (DPoP
+shape), NonceStore replay protection, signed revocation list,
+caveat DSL with boolean composition. ~1.4 µs chain-only verify,
+~17 kHz 5-gate verifications/core. unsafe_code = forbid.
 
-  capnagent  — capability-bounded authorization for AI agent tool calls.
-               github.com/euanmcrosson-dotcom/capnagent
-  mcp-recon  — reverse-engineer any MCP server's tool surface in 30 seconds.
-               github.com/euanmcrosson-dotcom/mcp-recon
+Repo: github.com/euanmcrosson-dotcom/capnagent
 
-The recon → bound workflow:
+Two related repos in the same agent-security stack:
 
-   [ mcp-recon ]  →  threat profile  →  [ capnagent ]
-      "what is        "what should           "deny anything
-       here?"          we allow?"             outside that"
+  [ mcp-recon ]  →  [ capnagent ]  →  [ mcp-guard ]
+   recon layer      authority layer    runtime-policy layer
+   what's            what authority      what action is denied
+   exposed?          can the agent       at runtime even if
+                     hold?               authority slips?
 
-Run mcp-recon against your MCP server; get a Markdown threat
-profile classifying each tool against OWASP LLM Top 10 + MITRE
-ATLAS, with a recommended capnagent caveat per tool. Paste the
-caveats into your capnagent issuer. Done.
+  mcp-recon: github.com/euanmcrosson-dotcom/mcp-recon
+  mcp-guard: github.com/euanmcrosson-dotcom/mcp-guard
 
-The rest of this post focuses on capnagent (the deeper of the two),
-but the strongest 5-second pitch is: defensive engine + offensive
-companion = one full security posture for any MCP-shaped agent.
-
-# capnagent (the defensive side)
-
-A public purple-team harness for MCP servers and AI-agent tool
-surfaces, plus the Rust capability-token engine underneath.
-Methodology is blue-first: every round writes a falsifiable
-security claim, then constructs an attack designed to falsify it.
-The PoC simulates the worst case (the model has been fully
+The interesting thing isn't that I built defenses — it's that I
+red-teamed them. Methodology is blue-first: every round writes a
+falsifiable security claim, then constructs an attack designed to
+falsify it. The PoC simulates the worst case (the model is fully
 compromised by the injection and emits exactly the calls the
 attacker described), and the verifier's denial — or admission — is
 recorded as a signed audit receipt. Reviewers verify by running
 the suite; no prose-trust required.
 
-The interesting thing isn't that we built defenses — it's that we
-red-teamed them. 10 rounds are closed (cross-server confused deputy,
-hok-replay, capability broadening, revocation race, cross-origin
-exfil, IDN homograph, path-traversal, etc). Then we ran an "angles"
-pass: 4 parallel agents writing adversarial test files against our
-own engine. 36 angles, 17 findings, including FOUR HIGH severity
-defects:
+10 rounds closed. Then I ran an "angles" pass: 4 parallel agents
+writing adversarial test files against my own engine. 36 angles,
+17 findings, FOUR HIGH severity defects:
 
   A.1  Sub-ulp f64 collapse — `arg.amount <= 50` admits a holder
        whose `amount` is `50.000000000000001`. Authorization bypass.
@@ -64,28 +60,36 @@ defects:
   C.5  Empty-caveat capability = god-mode. `Issuer.issue("x").build()`
        with no caveats authorizes every context.
 
-These are real engineering defects, found and triaged before launch
-rather than after. v0.5 SHIPPED today and closes 3 of the 4 — B.2,
-B.3, C.5 — plus rounds 07, 09, 10 flipping from BREAKS to CLOSED
-in the same batch. A.1 (sub-ulp f64) is the trickier one: real
-fix is integer-only mode for monetary caveats, which is a small
-DSL change but affects the public API; under design discussion
-rather than rushed into the same batch. The corpus is the artifact;
-the library is the engine; the methodology — falsifiable claim →
-adversarial PoC → signed receipt → fix or document — is what makes
-the corpus auditable.
+These are real engineering defects, found and triaged in a public
+loop rather than after a CVE. As of v0.6.1 (shipped today):
+**all 4 HIGH are closed end-to-end.** B.2, B.3, C.5 closed in v0.5;
+A.1 closed in v0.6 (Rust DSL evaluator now tracks integer-syntactic
+vs float-syntactic source text and refuses to compare an integer
+caveat literal against a float-syntactic arg); v0.6.1 added
+`verifyWithContextJson` so JS callers who have the original JSON
+get the same protection across the WASM boundary.
 
-Engine: macaroon-style HMAC chain, ed25519 holder-of-key (DPoP-
-shape), NonceStore replay protection, signed revocation list, caveat
-DSL with boolean composition. WASM/TS bindings + MCP adapter,
-verified against @modelcontextprotocol/server-filesystem live. 1.4 µs
-chain-only verify, 56 µs hok, 170 µs hok+replay. ~17 kHz 5-gate
-verifications/core. unsafe_code = forbid.
+The point isn't that the engine is perfect — it's that the
+methodology lets you find defects this severe BEFORE deployment,
+in public, with each finding becoming a reproducible test. The
+corpus is the artifact; the library is the engine; the
+methodology — falsifiable claim → adversarial PoC → signed
+receipt → fix or document — is what makes the corpus auditable.
 
-242 Rust tests, 322 TS tests, criterion benches in CI. Looking
-for adversarial review of the threat model + the angles
-methodology. If you can break round NN or design round 11, that's
-the conversation I'm here for.
+Engine: ~1.4 µs chain-only verify, 56 µs hok, 170 µs hok+replay,
+~17 kHz 5-gate verifications/core. Apache-2.0, unsafe_code = forbid.
+246 Rust tests + 346 TS tests + criterion benches in CI. WASM/TS
+bindings + MCP adapter verified live against the official
+@modelcontextprotocol/server-filesystem.
+
+Looking for adversarial review of the threat model + the angles
+methodology, OR for one partner team running an agent in production
+who'd let me write Round 11 against their stack (free, ~3 weeks
+elapsed, both names on the writeup). Partner brief:
+docs/launch/partner-brief-v0.7.md.
+
+If you can break round NN or design round 11 — that's the
+conversation I'm here for.
 ```
 
 ## URL

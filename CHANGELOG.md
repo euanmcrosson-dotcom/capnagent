@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (v0.7.0 — Python bindings)
+
+- **New crate `capnagent-py`** under `crates/capnagent-py`, exposing
+  the capnagent core (Issuer, CapabilityBuilder, Capability,
+  Verifier, Auditor) as a Python package via [PyO3](https://pyo3.rs)
+  + [maturin](https://maturin.rs). Same pure-Rust core as the WASM
+  binding — no separate engine, just a different language surface.
+- **Native module name `capnagent._native`**, pure-Python re-export
+  shim at `python/capnagent/__init__.py` so callers import the
+  friendlier `from capnagent import Issuer, Verifier, Auditor`.
+- **`abi3-py38`** so a single wheel covers CPython 3.8 through
+  3.13+ (and beyond). Builds for the current platform's triple.
+- **8 Python tests** under `crates/capnagent-py/tests/` covering:
+  import surface, allow / deny paths, the four high-severity angle
+  closures (C.5 no-caveat, B.2 invalid-predicate, B.3 zero-byte
+  audit key, **A.1 sub-ulp f64**), and Capability serialize /
+  parse round-trip. The A.1 test demonstrates that the Python
+  binding gets full A.1 protection by default — Python's
+  `json.dumps` preserves number source text in a way that JS's
+  `JSON.parse` does not.
+- **Example script** at `crates/capnagent-py/examples/basic.py`
+  walking allow → deny → audit-receipt-verify.
+- **`pyproject.toml`** with maturin build backend, abi3 wheel
+  classifiers for Python 3.8–3.13+, Apache-2.0 license metadata.
+- **`crates/capnagent-py/README.md`** with quick-start, API table,
+  build-from-source instructions, and the "Python gets A.1 closure
+  for free" explanation.
+
+Build / install workflow:
+
+```bash
+cd crates/capnagent-py
+pip install maturin
+python -m maturin build --release
+pip install target/wheels/capnagent-*.whl
+python -m pytest tests/ -v
+```
+
+Verified end-to-end on this build: `capnagent-0.0.1-cp38-abi3-
+win_amd64.whl`. 8/8 tests pass; `examples/basic.py` produces
+allow → deny → audit-signature-ok output.
+
 ### Added (v0.6.1 — full A.1 closure across the JS layer)
 
 - **`Verifier.verifyWithContextJson(cap, ctxJson, auditor)`** —

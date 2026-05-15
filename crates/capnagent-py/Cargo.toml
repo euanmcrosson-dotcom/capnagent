@@ -1,0 +1,32 @@
+[package]
+name = "capnagent-py"
+description = "Python bindings for capnagent — capability-based authority tokens for AI agent tool calls."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
+
+[lib]
+# `maturin develop` and `maturin build` expect a `cdylib` so Python's
+# import machinery can load the .so / .pyd. The `rlib` keeps cargo's
+# native test runner happy.
+name = "capnagent_py"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# Pure-Rust core — single shared implementation across all bindings
+# (WASM, Python, future native callers). The Rust API stays
+# binding-free; binding-specific translation lives in this crate.
+capnagent-core = { path = "../capnagent-core", version = "0.0.1" }
+# PyO3 itself. `abi3-py38` keeps the produced wheel compatible with
+# CPython 3.8+ via the stable Python ABI — one wheel per platform
+# instead of one wheel per (platform, python-minor-version).
+# RUSTSEC-2025-0020: PyString::from_object pre-0.24.1 forwarded &str
+# args to the Python C API without nul-byte termination. Pinned >=0.24.1.
+pyo3 = { version = "0.24.1", features = ["extension-module", "abi3-py38"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "=1.0.140", features = ["arbitrary_precision"] }

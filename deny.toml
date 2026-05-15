@@ -27,6 +27,11 @@ ignore = []
 [licenses]
 allow = [
     "Apache-2.0",
+    # `target-lexicon` (pyo3 build dep) is licensed `Apache-2.0 WITH
+    # LLVM-exception`. The LLVM exception is a permissive grant of
+    # patent rights compatible with the rest of capnagent's licensing.
+    # See: https://llvm.org/foundation/relicensing/LICENSE.txt
+    "Apache-2.0 WITH LLVM-exception",
     "MIT",
     "BSD-2-Clause",
     "BSD-3-Clause",

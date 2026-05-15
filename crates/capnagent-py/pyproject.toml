@@ -1,0 +1,49 @@
+[build-system]
+requires = ["maturin>=1.7"]
+build-backend = "maturin"
+
+[project]
+name = "capnagent"
+description = "Capability-based authority tokens for AI agent tool calls. Python bindings."
+readme = "README.md"
+requires-python = ">=3.8"
+license = { text = "Apache-2.0" }
+authors = [
+    { name = "Euan McRosson", email = "euanmcrosson@gmail.com" },
+]
+keywords = [
+    "ai-security",
+    "mcp",
+    "agent-security",
+    "capability-tokens",
+    "authorization",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Information Technology",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Security",
+    "Topic :: Software Development :: Libraries",
+]
+
+[project.urls]
+Homepage = "https://github.com/euanmcrosson-dotcom/capnagent"
+Repository = "https://github.com/euanmcrosson-dotcom/capnagent"
+Issues = "https://github.com/euanmcrosson-dotcom/capnagent/issues"
+
+[tool.maturin]
+# The Rust extension module is `capnagent_py`; the Python-import name
+# is just `capnagent`. We provide a tiny pure-Python shim that
+# re-exports the Rust classes under camelCase-ish names that match
+# the TypeScript surface, so the same example code is portable
+# between bindings.
+module-name = "capnagent._native"
+python-source = "python"
