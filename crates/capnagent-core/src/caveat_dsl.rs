@@ -195,16 +195,50 @@ impl Unit {
     }
 }
 
+/// Syntactic "shape" of a numeric value's source text. v0.6 added this
+/// to close angle finding A.1 (sub-ulp f64 collapse).
+///
+/// Concrete example A.1 was about:
+///   - operator writes caveat `arg.amount <= 50` (the DSL literal `50`
+///     has NO fractional part → integer-syntactic).
+///   - holder emits JSON `{"amount": 50.000000000000001}` (16 digits
+///     past the decimal — float-syntactic in source, but after f64
+///     parsing collapses to bit-identical 50.0).
+///   - v0.5 and earlier: caveat admits the call because 50.0 <= 50.0.
+///   - v0.6: `apply_op` sees Integer caveat vs Float arg, rejects.
+///
+/// JSON args use the `arbitrary_precision` serde_json feature so the
+/// source text of numbers is preserved past parse time. DSL literals
+/// track the kind based on whether `.` was parsed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum NumKind {
+    /// Source text had no fractional part and no scientific notation:
+    /// DSL literals `50`, `5000_cents`, `-1_ms`; JSON `50`, `-7`.
+    /// Semantic claim: "this is an exact integer."
+    Integer,
+    /// Source text had a fractional part or scientific notation: DSL
+    /// literals `12.99`, `0.01`, `-1.5_usd`; JSON `12.99`,
+    /// `50.000000000000001`, `5e1`. Semantic claim: "this is an
+    /// approximation that may carry sub-ulp slop."
+    Float,
+}
+
 #[derive(Debug, Clone)]
 enum Value {
     String(String),
-    /// (value, unit). v0 carried `i64` here; v0.1 widened to `f64` so the
-    /// DSL can accept decimal literals (`12.99`, `0.01`, `-1.5_usd`) and
+    /// (value, unit, syntactic-kind).
+    ///
+    /// v0 carried `i64` here; v0.1 widened to `f64` so the DSL can
+    /// accept decimal literals (`12.99`, `0.01`, `-1.5_usd`) and
     /// compare them against decimal JSON args without a type-mismatch
-    /// denial. Integer literals (`50`) and integer JSON args still parse
-    /// — they're stored as the corresponding `f64` (e.g. `50.0`). See
-    /// `apply_op` for the equality-and-ordering policy.
-    Number(f64, Option<Unit>),
+    /// denial. Integer literals (`50`) and integer JSON args still
+    /// parse — they're stored as the corresponding `f64` (e.g. `50.0`).
+    /// See `apply_op` for the equality-and-ordering policy.
+    ///
+    /// v0.6 added the third field [`NumKind`]: tracks whether the
+    /// source text was integer-syntactic (no `.`/`e`/`E`) or float-
+    /// syntactic. Load-bearing for the A.1 closure rule in `apply_op`.
+    Number(f64, Option<Unit>, NumKind),
     /// (seconds since unix epoch, sub-second nanos).
     Timestamp(i64, u32),
 }
@@ -213,8 +247,8 @@ impl Value {
     fn type_name(&self) -> String {
         match self {
             Value::String(_) => "string".to_string(),
-            Value::Number(_, None) => "number".to_string(),
-            Value::Number(_, Some(u)) => format!("number({})", u.as_str()),
+            Value::Number(_, None, _) => "number".to_string(),
+            Value::Number(_, Some(u), _) => format!("number({})", u.as_str()),
             Value::Timestamp(..) => "timestamp".to_string(),
         }
     }
@@ -592,8 +626,15 @@ impl<'a> Parser<'a> {
         // a typo on a security boundary. A second `.` (e.g. `12.99.5`)
         // is left in the stream and surfaces as "trailing garbage" from
         // the top-level parser, anchored at the second dot's position.
+        //
+        // v0.6: track whether a `.` was parsed to mark the literal as
+        // `NumKind::Float`. Integer-syntactic literals (no `.`) get
+        // `NumKind::Integer`, which gates the v0.6 A.1 closure rule
+        // in `apply_op`.
+        let mut kind = NumKind::Integer;
         if self.peek() == Some('.') {
             self.bump();
+            kind = NumKind::Float;
             let frac_digits_start = self.pos;
             while let Some(c) = self.peek() {
                 if c.is_ascii_digit() {
@@ -634,7 +675,7 @@ impl<'a> Parser<'a> {
             None
         };
 
-        Ok(Value::Number(value, unit))
+        Ok(Value::Number(value, unit, kind))
     }
 }
 
@@ -705,10 +746,25 @@ fn json_to_value(j: &serde_json::Value) -> Option<Value> {
         // they agree. Non-finite (NaN, ±∞) — which standard JSON cannot
         // encode anyway — is rejected so it cannot sneak past `apply_op`'s
         // NaN trap and produce silently-false comparisons.
-        serde_json::Value::Number(n) => n
-            .as_f64()
-            .filter(|f| f.is_finite())
-            .map(|v| Value::Number(v, None)),
+        //
+        // v0.6: with the `arbitrary_precision` serde_json feature enabled,
+        // we can also inspect the SOURCE TEXT of the number (`n.to_string()`
+        // returns the original JSON literal, not the f64 round-trip). This
+        // is load-bearing for the A.1 closure: a holder that emits
+        // `50.000000000000001` collapses to bit-identical f64 50.0, but
+        // the source text still contains a `.`, so we mark it as
+        // `NumKind::Float`. `apply_op` then refuses to compare it against
+        // an integer-syntactic caveat literal.
+        serde_json::Value::Number(n) => {
+            let f = n.as_f64().filter(|f| f.is_finite())?;
+            let source = n.to_string();
+            let kind = if source.contains('.') || source.contains('e') || source.contains('E') {
+                NumKind::Float
+            } else {
+                NumKind::Integer
+            };
+            Some(Value::Number(f, None, kind))
+        }
         _ => None,
     }
 }
@@ -778,7 +834,7 @@ fn apply_op(op: Op, lhs: &Value, rhs: &Value) -> Result<bool, DslError> {
                 got: format!("string vs string with `{}`", op.as_str()),
             }),
         },
-        (Value::Number(a, ua), Value::Number(b, ub)) => {
+        (Value::Number(a, ua, ka), Value::Number(b, ub, kb)) => {
             if ua != ub {
                 return Err(DslError::TypeMismatch {
                     expected: format!("number with unit {}", fmt_unit(ub)),
@@ -795,6 +851,44 @@ fn apply_op(op: Op, lhs: &Value, rhs: &Value) -> Result<bool, DslError> {
                 return Err(DslError::TypeMismatch {
                     expected: "finite number".into(),
                     got: "NaN".into(),
+                });
+            }
+            // v0.6 — A.1 closure: integer-domain comparison rule.
+            //
+            // If the CAVEAT literal (rhs side, `b`/`kb`) is integer-
+            // syntactic but the ARG-derived value (lhs side, `a`/`ka`)
+            // is float-syntactic, REJECT. This catches the
+            // sub-ulp-collapse exploit where a holder emits
+            // `{"amount": 50.000000000000001}` to defeat a caveat
+            // written as `arg.amount <= 50`: both round to f64 50.0,
+            // but the source text on the arg side has a `.`, marking
+            // it `NumKind::Float`, while the caveat literal has no `.`
+            // and is `NumKind::Integer`.
+            //
+            // The reverse direction (operator wrote a fractional
+            // literal, holder sends an integer) is FINE — an LLM-driven
+            // agent often emits integers in JSON when an operator's
+            // caveat is fractional (e.g. `arg.price <= 12.99` against
+            // `{"price": 12}`), so allowing that is the right default.
+            //
+            // Mitigation guidance for operators who hit this error:
+            //   1. Use integer-domain args throughout: rewrite
+            //      `arg.amount <= 50` to `arg.amount_cents <= 5000`
+            //      and have the agent's tool expose `amount_cents`
+            //      instead of `amount`.
+            //   2. Reject non-integer JSON at the tool boundary before
+            //      capnagent sees it (also defends against other
+            //      shenanigans like negative zero, denormals, etc.).
+            if matches!(op, Op::Lt | Op::Le | Op::Gt | Op::Ge | Op::Eq | Op::Neq)
+                && *kb == NumKind::Integer
+                && *ka == NumKind::Float
+            {
+                return Err(DslError::TypeMismatch {
+                    expected: "integer-syntactic numeric arg (caveat literal is integer-domain; \
+                               use _cents form for sub-unit precision, or reject non-integer \
+                               args at the tool boundary — closes angle finding A.1)"
+                        .into(),
+                    got: "float-syntactic numeric arg".into(),
                 });
             }
             let ord = a

@@ -77,41 +77,70 @@ describe("angle 1: numeric overflow & precision", () => {
     expect(out.kind).toBe("allowed");
   });
 
-  it("[FINDING] sub-ulp args silently collapse — `arg.amount <= 50` admits values that LOOK >50 in JSON", async () => {
-    // A holder controls the args. They emit a JSON number whose
-    // decimal text is strictly greater than 50 but whose f64
-    // representation is exactly 50.0 (because the digits beyond
-    // f64's ~15.95 decimal precision get rounded off during
-    // JSON-text → f64 conversion). The cap then admits the value.
+  it("[CLOSED-PARTIAL v0.6] sub-ulp args — engine-side rejection in Rust; JS layer pre-collapses (architectural)", async () => {
+    // CLOSED PARTIAL in v0.6. The engine-side defense ships in
+    // `caveat_dsl.rs` and is verified by the Rust integration tests
+    // `v0_6_sub_ulp_collapse_a1_closed` and friends. The DSL evaluator
+    // now refuses to compare an integer-syntactic caveat literal
+    // (`arg.amount <= 50`) against a float-syntactic arg value
+    // (anything whose JSON source contains `.`/`e`/`E`).
     //
-    // Concrete bit math: ulp(50) ≈ 7.1e-15 in f64. Any decimal
-    // digit string for "50 + delta" where delta < ulp/2 ≈ 3.5e-15
-    // rounds to bit-identical 50.0. JSON.parse demonstrates the
-    // rounding here; the same rounding happens inside serde_json
-    // on the Rust side. Both sides agree (this is the documented
-    // policy in `apply_op`'s f64 doc-comment), but the operator
-    // who wrote the caveat reading it left-to-right would expect
-    // a strictly-greater-than-50 value to be rejected.
+    // BUT the *JS layer* — this very test environment — pre-collapses
+    // the sub-ulp digits before WASM ever sees them. Concrete chain:
     //
-    // FINDING: a holder that emits `amount: 50.000000000000001`
-    // (16 digits past the decimal) defeats the boundary check on
-    // `amount <= 50`. The DSL's float semantics are working as
-    // documented; the *operator-facing* surprise is that
-    // `arg.amount <= 50` does NOT mean "<= 50 as the holder
-    // typed it" — it means "<= 50 after f64 rounding".
+    //   1. `JSON.parse("50.000000000000001")` in JS yields the f64 50.0
+    //      (JS Number IS f64; precision past ulp(50)/2 is rounded out).
+    //   2. The resulting JS object `{amount: 50}` is passed to
+    //      `verifyWithContext`.
+    //   3. `serde-wasm-bindgen` serialises JS Number 50.0 across the
+    //      boundary; serde_json sees source text "50" (integer form),
+    //      not "50.000000000000001".
+    //   4. The v0.6 NumKind tracking sees Integer vs Integer → no
+    //      A.1 rule fires → caveat admits the call.
     //
-    // Mitigation: caveat authors who care about exact integer
-    // caps should use units (`50_cents` against integer-cents
-    // args), or the downstream tool should reject non-integer
-    // args itself. Operator-facing docs should call this out.
+    // For a JS caller to get the v0.6 engine-side rejection, the
+    // args must arrive in Rust as a JSON STRING (so the source text
+    // survives) — that's a follow-on WASM-API change tracked for
+    // v0.6.1 / v0.7. Mitigation guidance for JS callers TODAY:
+    // use `_cents` form against integer args (`arg.amount_cents <= 5000`),
+    // which sidesteps the issue because both sides are integer-syntactic
+    // before they hit JS's number type.
+    //
+    // We keep this test green-and-asserting-allowed because the
+    // observed behaviour at the JS boundary IS still "allowed" — the
+    // engine-side fix didn't change that, by design. The Rust unit
+    // tests prove the engine itself rejects. See
+    // `crates/capnagent-core/tests/caveat_dsl_tests.rs::v0_6_*`.
     const sneakyJson = "50.000000000000001"; // 16 digits past the decimal
     const collapsed = JSON.parse(sneakyJson) as number;
-    expect(collapsed === 50).toBe(true); // confirm the JSON-side collapse
+    expect(collapsed === 50).toBe(true); // JS Number is f64; sub-ulp gone
     const out = await evalCaveat("arg.amount <= 50", {
       ...baseCtx,
       args: JSON.parse(`{"amount": ${sneakyJson}}`),
     });
-    expect(out.kind).toBe("allowed"); // <-- the silent-allow finding
+    // JS-layer artefact: source text is gone before crossing the WASM
+    // boundary, so the engine sees Integer vs Integer and admits.
+    // Engine-side rejection is verified in Rust; mitigation for JS
+    // callers is the `_cents` form.
+    expect(out.kind).toBe("allowed");
+  });
+
+  it("[v0.6] _cents mitigation works end-to-end through the JS layer", async () => {
+    // The recommended mitigation for JS callers: use the `_cents`
+    // form so both literal and arg are integers, and JS's f64
+    // collapse is benign (an integer arg cents value below 2^53 is
+    // representable exactly in f64).
+    const out = await evalCaveat("arg.amount_cents <= 5000", {
+      ...baseCtx,
+      args: { amount_cents: 1299 },
+    });
+    expect(out.kind).toBe("allowed");
+
+    const overBudget = await evalCaveat("arg.amount_cents <= 5000", {
+      ...baseCtx,
+      args: { amount_cents: 5001 },
+    });
+    expect(overBudget.kind).toBe("denied");
   });
 
   it("a value above-ulp from 50 (50.0000000000001) is correctly denied", async () => {
