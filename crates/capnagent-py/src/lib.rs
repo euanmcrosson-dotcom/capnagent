@@ -162,27 +162,28 @@ impl Auditor {
         Ok(Self(core::Auditor::new(key)))
     }
 
-    /// Verify a receipt's audit signature. Raises `ValueError` if the
-    /// signature is forged or the receipt has been tampered with.
+    /// Verify a receipt's audit signature.
+    ///
+    /// v0.7.1 — real round-trip via `Receipt::from_json` on the Rust
+    /// core. Failure modes:
+    ///
+    /// - Malformed JSON / missing required fields → `ValueError`
+    /// - HMAC signature mismatch (forged or tampered receipt) → `ValueError`
+    /// - Unsupported schema version → `ValueError`
+    /// - Returns silently on success.
+    ///
+    /// This is the load-bearing check for *externally-received*
+    /// receipts (e.g. a receipt that arrived over the wire from
+    /// another service that holds the same audit key). For
+    /// receipts you just produced via `verifier.verify_with_context`,
+    /// the signature is already valid by construction.
     fn verify(&self, py: Python<'_>, receipt_json: &str) -> PyResult<()> {
         let _ = py;
-        // Receipt is roundtripped through serde_json::Value because the
-        // Rust core's Receipt struct currently has serde::Serialize but
-        // not Deserialize — same pattern the WASM crate uses for the
-        // Receipt outbound shape. We parse the JSON, then re-feed it
-        // through the Receipt's serde-Serialize-aware deserialiser
-        // helper if available; for now we keep it lenient — verify()
-        // can be no-op here on a parse failure since the public
-        // Verifier path is the load-bearing audit.
-        let _value: serde_json::Value = serde_json::from_str(receipt_json)
+        let receipt = core::Receipt::from_json(receipt_json)
             .map_err(|e| PyValueError::new_err(format!("invalid receipt JSON: {e}")))?;
-        // TODO(v0.7.1): expose a Receipt-from-JSON constructor on
-        // capnagent-core to enable round-trip verification. Until
-        // then, the Python binding accepts the receipt as opaque JSON
-        // and relies on the receipt-was-just-emitted-by-our-Verifier
-        // assumption. Audit-signature verification of externally-
-        // received receipts will land in v0.7.1.
-        Ok(())
+        self.0
+            .verify(&receipt)
+            .map_err(|e| PyValueError::new_err(e.to_string()))
     }
 }
 

@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (v0.7.1 — `Auditor.verify` round-trip + PyPI publish workflow)
+
+- **`Receipt::from_json(s: &str)` on `capnagent-core`** — convenience
+  constructor wrapping `serde_json::from_str` against the existing
+  `Deserialize` derive on `Receipt`. Round-trips through the signed
+  canonical-JSON bytes so callers that move receipts through strings
+  (HTTP bodies, log lines, message queues) can rehydrate them without
+  reaching into serde directly.
+- **Python `Auditor.verify(receipt_json)` is now a real round-trip.**
+  v0.7.0 shipped it as a no-op stub pending the core constructor
+  above; v0.7.1 wires it end-to-end. Tampered receipts, wrong-key
+  receipts, malformed-JSON receipts all surface as `ValueError`. 4
+  new Python tests in `tests/test_basic.py` exercise the matrix:
+  - `test_auditor_verify_accepts_fresh_receipt` — happy path
+  - `test_auditor_verify_rejects_wrong_key` — receipt signed by
+    Auditor A is rejected by Auditor B with a different key
+  - `test_auditor_verify_rejects_tampered_receipt` — flipping any
+    non-signature field (here: outcome) invalidates the HMAC
+  - `test_auditor_verify_rejects_malformed_json` — garbage in →
+    `ValueError` out, no panic
+- **`.github/workflows/publish-pypi.yml`** — multi-platform wheel
+  build + PyPI upload triggered by `py-v*` tags. Builds:
+  - linux-x86_64 (manylinux auto)
+  - windows-x86_64 (MSVC)
+  - macos-arm64 (Apple Silicon, macos-14 runner)
+  - macos-x86_64 (last x86 macOS runner, macos-13)
+  - sdist
+  Tag pattern is `py-v*` not bare `v*` so Python-binding releases run
+  on a separate stream from Rust-core / WASM releases that use `v*`
+  tags. Upload step is guarded by `PYPI_API_TOKEN` presence and
+  no-op-skips gracefully if the secret isn't set yet (wheels remain
+  available as workflow artifacts for manual `twine upload`).
+
 ### Added (v0.7.0 — Python bindings)
 
 - **New crate `capnagent-py`** under `crates/capnagent-py`, exposing

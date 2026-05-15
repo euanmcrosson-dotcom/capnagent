@@ -91,10 +91,13 @@ the A.1 closure works end-to-end through the Python binding by
 default (Python's `json.dumps` doesn't have JS's f64-collapse
 problem).
 
-**Distribution path:** the maturin-built wheel is reproducible
-locally but not yet published to PyPI. The follow-on is wiring a
-GitHub Action that builds wheels for linux-x86_64, macOS-arm64,
-windows-x86_64 and uploads on a `v0.7.*` tag — tracked as v0.7.1.
+**Distribution path:** v0.7.1 shipped the multi-platform wheel
+workflow (`.github/workflows/publish-pypi.yml`). Triggered by `py-v*`
+tags so the Python binding has an independent release stream from
+Rust-core / WASM releases. Wheels are produced for linux-x86_64
+(manylinux), windows-x86_64, macos-arm64, macos-x86_64, plus an
+sdist. Upload to PyPI is gated on a `PYPI_API_TOKEN` secret — once
+that's set, every `py-v*` release publishes automatically.
 
 ## v0.8 — Round 11 against a real production stack
 
