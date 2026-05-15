@@ -85,21 +85,13 @@ jobs:
           name: wheels-macos-arm64
           path: crates/capnagent-py/dist/*.whl
 
-  macos-x86:
-    name: wheel (macos-x86_64)
-    runs-on: macos-13  # x86_64 mac runner (last x86 macOS image)
-    if: startsWith(github.ref, 'refs/tags/py-v') || github.event_name == 'workflow_dispatch'
-    steps:
-      - uses: actions/checkout@v4
-      - uses: PyO3/maturin-action@v1
-        with:
-          target: x86_64-apple-darwin
-          args: --release --out dist
-          working-directory: crates/capnagent-py
-      - uses: actions/upload-artifact@v4
-        with:
-          name: wheels-macos-x86_64
-          path: crates/capnagent-py/dist/*.whl
+  # macOS x86_64 wheels are deliberately not built. The `macos-13` runner
+  # pool is being deprecated and on the py-v0.7.1 release queued for
+  # 20+ minutes without starting. New Mac hardware is exclusively
+  # Apple Silicon (arm64); maintenance cost vs yield for x86_64 macOS
+  # wheels is poor. macOS x86_64 users can `pip install --no-binary`
+  # to build from the sdist, which always works because the Rust core
+  # is portable. Reconsider if there's user-driven demand.
 
   # ─── sdist (one source build, no platform dep) ───────────────────
 
@@ -123,7 +115,7 @@ jobs:
 
   publish:
     name: publish to PyPI
-    needs: [linux, windows, macos-arm, macos-x86, sdist]
+    needs: [linux, windows, macos-arm, sdist]
     runs-on: ubuntu-latest
     # Only fire when triggered by a release-published event (NOT a bare
     # workflow_dispatch — that's for manual wheel-builds without publish),
