@@ -133,15 +133,15 @@ jobs:
       - name: Notice if no token
         if: env.PYPI_API_TOKEN == ''
         env:
-          PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+          PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN1 }}
         run: echo "::warning::PYPI_API_TOKEN secret not set; skipping upload."
 
       - name: Publish to PyPI
         if: env.PYPI_API_TOKEN != ''
         uses: PyO3/maturin-action@v1
         env:
-          MATURIN_PYPI_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
-          PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+          MATURIN_PYPI_TOKEN: ${{ secrets.PYPI_API_TOKEN1 }}
+          PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN1 }}
         with:
           command: upload
           args: --non-interactive --skip-existing dist/*
