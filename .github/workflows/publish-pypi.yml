@@ -11,10 +11,17 @@ name: publish-pypi
 #   3. Create a GitHub Release pointing at the tag (this fires the
 #      `release: published` trigger below).
 #
-# Requires the `PYPI_API_TOKEN` repo secret to be set with `upload`
-# scope on the `capnagent` project on PyPI. The upload step is guarded
-# so the workflow no-ops cleanly when the secret is absent (wheels are
-# still produced as workflow artifacts for manual upload).
+# Auth model: PyPI Trusted Publishing (OIDC). No long-lived API token is
+# stored as a repo secret — the publish job mints a short-lived token from
+# GitHub's OIDC provider on each run, and PyPI verifies it against the
+# trusted-publisher config for project `capnagent`:
+#   Owner:        euanmcrosson-dotcom
+#   Repository:   capnagent
+#   Workflow:     publish-pypi.yml
+#   Environment:  pypi
+# If the trust relationship breaks, the publish step will fail with
+# `invalid-publisher` and the wheels are still available as workflow
+# artifacts for manual upload.
 
 on:
   release:
@@ -22,7 +29,7 @@ on:
   workflow_dispatch:
     inputs:
       publish:
-        description: "Upload to PyPI (requires PYPI_API_TOKEN secret)"
+        description: "Upload to PyPI (via OIDC trusted publisher)"
         required: false
         default: "false"
         type: choice
@@ -117,38 +124,33 @@ jobs:
     name: publish to PyPI
     needs: [linux, windows, macos-arm, sdist]
     runs-on: ubuntu-latest
-    # Only fire when triggered by a release-published event (NOT a bare
-    # workflow_dispatch — that's for manual wheel-builds without publish),
-    # AND only if we have a token. The token check is a no-op-skip rather
-    # than a hard fail so the wheels remain available as artifacts even
-    # when the secret hasn't been configured yet.
     # The publish job fires on:
     #  - real `release: published` events for `py-v*` tags (the normal flow), or
     #  - manual `workflow_dispatch` runs that pass `publish=true` (verification
-    #    of the PyPI token without cutting a real release — the `--skip-existing`
-    #    flag on the upload makes it a no-op against any version already on PyPI).
+    #    of the OIDC trust relationship without cutting a real release —
+    #    `skip-existing: true` makes it a no-op against any version already on
+    #    PyPI).
     if: |
       (github.event_name == 'release' && startsWith(github.ref, 'refs/tags/py-v'))
       || (github.event_name == 'workflow_dispatch' && inputs.publish == 'true')
-    environment: pypi
+    environment:
+      name: pypi
+      url: https://pypi.org/project/capnagent
+    permissions:
+      # Required by `pypa/gh-action-pypi-publish` to mint a short-lived
+      # OIDC token. PyPI verifies the token against the trusted-publisher
+      # config (owner / repo / workflow / environment) and accepts the
+      # upload without any long-lived API token.
+      id-token: write
     steps:
       - uses: actions/download-artifact@v8
         with:
           merge-multiple: true
           path: dist
 
-      - name: Notice if no token
-        if: env.PYPI_API_TOKEN == ''
-        env:
-          PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN1 }}
-        run: echo "::warning::PYPI_API_TOKEN secret not set; skipping upload."
-
-      - name: Publish to PyPI
-        if: env.PYPI_API_TOKEN != ''
-        uses: PyO3/maturin-action@v1
-        env:
-          MATURIN_PYPI_TOKEN: ${{ secrets.PYPI_API_TOKEN1 }}
-          PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN1 }}
+      - name: Publish to PyPI (Trusted Publishing / OIDC)
+        uses: pypa/gh-action-pypi-publish@release/v1
         with:
-          command: upload
-          args: --non-interactive --skip-existing dist/*
+          skip-existing: true
+          verbose: true
+          print-hash: true
