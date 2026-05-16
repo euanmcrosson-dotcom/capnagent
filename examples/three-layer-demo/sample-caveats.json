@@ -1,0 +1,30 @@
+{
+  "$schema": "mcp-recon/v0.1/caveats",
+  "generated_at": "2026-05-15T12:00:00Z",
+  "source": {
+    "server_url": "https://example.com/mcp",
+    "server_name": "example-fs-and-mail",
+    "scan_id": "scan-2026-05-15-aae3f7"
+  },
+  "summary": {
+    "tools_found": 2,
+    "caveats_generated": 2,
+    "owasp_categories_touched": ["LLM02", "LLM06"]
+  },
+  "issuance_plans": [
+    {
+      "tool": "list_directory",
+      "caveat_dsl": "tool == \"list_directory\" AND arg.path starts_with \"/sandbox/\"",
+      "rationale": "Filesystem read tool. Restricted to a sandbox prefix to prevent disclosure of operating-system files (LLM02 indirect-injection-via-filesystem).",
+      "owasp_category": "LLM02",
+      "mitre_atlas": "T0051"
+    },
+    {
+      "tool": "send_email",
+      "caveat_dsl": "tool == \"send_email\" AND arg.to starts_with \"alice@\"",
+      "rationale": "Outbound side-effect with high blast-radius. Restricted to a known correspondent prefix (LLM06 sensitive-information-disclosure). Real-world deployments would use a contact-allowlist via mcp-guardrails on top of this.",
+      "owasp_category": "LLM06",
+      "mitre_atlas": "T0044"
+    }
+  ]
+}
