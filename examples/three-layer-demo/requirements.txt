@@ -1,0 +1,2 @@
+capnagent>=0.7.4
+mcp-guardrails>=0.5.2
