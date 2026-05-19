@@ -129,7 +129,7 @@ checksum = "5d20789868f4b01b2f2caec9f5c4e0213b41e3e5702a50157d699ae31ced2fcb"
 
 [[package]]
 name = "capnagent-cli"
-version = "0.7.5"
+version = "0.7.6"
 dependencies = [
  "anyhow",
  "base64",
@@ -139,7 +139,7 @@ dependencies = [
 
 [[package]]
 name = "capnagent-core"
-version = "0.7.5"
+version = "0.7.6"
 dependencies = [
  "base64",
  "criterion",
@@ -156,7 +156,7 @@ dependencies = [
 
 [[package]]
 name = "capnagent-py"
-version = "0.7.5"
+version = "0.7.6"
 dependencies = [
  "capnagent-core",
  "pyo3",
@@ -166,7 +166,7 @@ dependencies = [
 
 [[package]]
 name = "capnagent-wasm"
-version = "0.7.5"
+version = "0.7.6"
 dependencies = [
  "base64",
  "capnagent-core",

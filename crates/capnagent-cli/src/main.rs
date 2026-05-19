@@ -48,7 +48,9 @@ fn main() -> Result<()> {
 
 fn resolve_key(supplied: Option<&str>) -> Result<Vec<u8>> {
     match supplied {
-        Some(s) => B64.decode(s).context("decode --key/CAPNAGENT_KEY as base64"),
+        Some(s) => B64
+            .decode(s)
+            .context("decode --key/CAPNAGENT_KEY as base64"),
         None => {
             eprintln!(
                 "warning: no --key/CAPNAGENT_KEY supplied; using a public placeholder key.\n\
@@ -103,7 +105,11 @@ mod tests {
         .unwrap();
         assert!(!token.is_empty());
         let parsed = capnagent_core::Capability::parse(&token).expect("round-trip");
-        let preds: Vec<&str> = parsed.caveats.iter().map(|c| c.predicate.as_str()).collect();
+        let preds: Vec<&str> = parsed
+            .caveats
+            .iter()
+            .map(|c| c.predicate.as_str())
+            .collect();
         assert!(preds.iter().any(|p| p.contains("order.read")));
         assert!(preds.iter().any(|p| p.contains("max_refund <= 50")));
         assert!(preds.iter().any(|p| p.contains("region == \"eu\"")));
@@ -112,13 +118,7 @@ mod tests {
 
     #[test]
     fn rejects_malformed_limit() {
-        let err = mint(
-            b"k",
-            "a",
-            "t",
-            &["no_equals_sign".into()],
-            "24h",
-        );
+        let err = mint(b"k", "a", "t", &["no_equals_sign".into()], "24h");
         assert!(err.is_err());
     }
 }
