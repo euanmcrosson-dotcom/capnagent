@@ -1,0 +1,21 @@
+[package]
+name = "capnagent-cli"
+description = "Command-line interface for capnagent — mint capability tokens for AI agents"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "capnagent"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+base64 = "0.22"
+clap = { version = "4.5", features = ["derive", "env"] }
+capnagent-core = { path = "../capnagent-core", version = "0.7.5" }

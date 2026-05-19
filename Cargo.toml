@@ -1,9 +1,14 @@
 [workspace]
-members = ["crates/capnagent-core", "crates/capnagent-wasm", "crates/capnagent-py"]
+members = [
+    "crates/capnagent-core",
+    "crates/capnagent-wasm",
+    "crates/capnagent-py",
+    "crates/capnagent-cli",
+]
 resolver = "2"
 
 [workspace.package]
-version = "0.7.4"
+version = "0.7.5"
 edition = "2021"
 license = "Apache-2.0"
 repository = "https://github.com/euanmcrosson-dotcom/capnagent"
