@@ -128,7 +128,12 @@ example package, and verify every claim in the corpus without
 trusting any prose. The purple-team `README.md` documents the
 methodology and the `_template.md` shape every round follows.
 
-## Status: v0.5 shipped — 10 rounds closed, every BREAKS resolved
+## Status: v0.7.6 — 10 rounds closed, every BREAKS resolved
+
+The purple-team milestone (all 10 rounds closed, every documented BREAK
+resolved) was reached in v0.5 and still holds — the suite below runs green at
+v0.7.6. Releases since v0.5 added the PyPI distribution and the `capnagent`
+CLI that Capframe's **Bind** module dispatches to.
 
 The engine: 242 Rust tests (10 integration targets, including
 proptests on the macaroon no-broaden invariant and the boolean DSL
