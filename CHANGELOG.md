@@ -10,12 +10,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added — CI-enforced coverage gates on the security surfaces
 
 - **Rust engine (`capnagent-core`)**: new `coverage` CI job runs
-  `cargo-llvm-cov` and fails under a line floor. Only the engine is gated —
-  issuer, verifier, caveat DSL, audit, revocation, replay — because that's
-  where an untested branch is a fail-open; the CLI is a thin binary and the
-  wasm/py bindings are covered through their own consumers (`wasm-pack test`,
-  pytest). Measured on Linux (the windows-gnu toolchain ships no profiler
-  runtime, so coverage can't be instrumented locally).
+  `cargo-llvm-cov` and fails under a line floor (baseline 87.7%). Only the
+  engine is gated — issuer, verifier, caveat DSL, audit, revocation, replay —
+  because that's where an untested branch is a fail-open; the CLI is a thin
+  binary and the wasm/py bindings are covered through their own consumers
+  (`wasm-pack test`, pytest). Measured on Linux (the windows-gnu toolchain
+  ships no profiler runtime, so coverage can't be instrumented locally). The
+  security *decision* logic is well covered (context 100%, capability 94%,
+  audit 93%, verifier/nonce_store ~89%, every adversarial arm tested); the
+  residual gap is caveat_dsl's RFC-3339 parser error-message arms — fail-closed
+  and fuzz-proven non-panicking, so not worth covering line-by-line.
+- Closed two genuinely-untested public defense toggles the gate surfaced:
+  `Verifier::without_nonce_store` (the symmetric companion to the already-tested
+  `without_revocation_list` — an operator turning replay protection *off* must
+  both report it via `has_nonce_store` and behave like it) and the
+  `revocation_list()` inspector. Added engine tests for both.
 - **TS SDK (`@capnagent/core`)**: `test:coverage` enforces line/branch/function
   thresholds (`vitest.config.ts`) on the wrapper logic — `index.ts` (verify +
   error mapping), `errors.ts`, `translate.ts`. The re-export shim `wasm.ts` and

@@ -298,3 +298,25 @@ fn without_revocation_list_clears_an_installed_one() {
         .unwrap();
     assert_eq!(receipt.outcome, Outcome::Allowed);
 }
+
+#[test]
+fn revocation_list_getter_reflects_install_state() {
+    // The `revocation_list()` accessor lets deployment-readiness code inspect
+    // the installed list (e.g. to surface a stale `issued_at_ms` to operators).
+    // It must return `None` before install and the live list after.
+    let mut revoker = Revoker::new(ROOT_KEY);
+    revoker.revoke("buy");
+    let list = revoker.publish(4_242);
+
+    let verifier = Verifier::new(ROOT_KEY);
+    assert!(verifier.revocation_list().is_none());
+    assert!(!verifier.has_revocation_list());
+
+    let verifier = verifier.with_revocation_list(list).unwrap();
+    assert!(verifier.has_revocation_list());
+    let installed = verifier
+        .revocation_list()
+        .expect("getter must return the installed list");
+    assert_eq!(installed.issued_at_ms, 4_242);
+    assert!(installed.contains("buy"));
+}

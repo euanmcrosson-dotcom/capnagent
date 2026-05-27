@@ -347,3 +347,55 @@ fn verify_with_context_does_not_consult_the_nonce_store() {
         "verify_with_context must not touch the nonce store",
     );
 }
+
+#[test]
+fn without_nonce_store_disables_replay_protection_and_reports_it() {
+    // The symmetric companion to `without_revocation_list_clears_an_installed_one`
+    // in revocation_tests.rs: an operator can toggle a defense back OFF, and the
+    // public API must both *report* the change (`has_nonce_store`) and *behave*
+    // like it — a captured proof must replay freely once the store is removed.
+    // Without this, an operator who calls `without_nonce_store()` (e.g. to swap
+    // stores) could silently believe replay protection is still active.
+    let key = fresh_keypair();
+    let cap = issue_with_hok(&key);
+    let auditor = Auditor::new(AUDIT_KEY);
+    let (_store, dyn_store) = fresh_store();
+
+    let guarded = Verifier::new(ROOT_KEY).with_nonce_store(dyn_store);
+    assert!(guarded.has_nonce_store());
+
+    // Defense ON: first use allowed, replay denied.
+    let ctx = ctx_at(SystemTime::now());
+    let challenge = pop_challenge_for(&cap, &ctx);
+    let proof = key.sign(&challenge).to_bytes();
+    assert_eq!(
+        guarded
+            .verify_with_proof(&cap, &ctx, &auditor, &challenge, &proof)
+            .unwrap()
+            .outcome,
+        Outcome::Allowed,
+    );
+    match &guarded
+        .verify_with_proof(&cap, &ctx, &auditor, &challenge, &proof)
+        .unwrap()
+        .outcome
+    {
+        Outcome::Denied { reason } => assert!(reason.contains("replay")),
+        other => panic!("expected replay denial while the store is installed, got {other:?}"),
+    }
+
+    // Toggle the defense OFF. Introspection flips, and the same proof bytes now
+    // replay freely on every call — no nonce check is consulted.
+    let unguarded = guarded.without_nonce_store();
+    assert!(!unguarded.has_nonce_store());
+    for _ in 0..2 {
+        assert_eq!(
+            unguarded
+                .verify_with_proof(&cap, &ctx, &auditor, &challenge, &proof)
+                .unwrap()
+                .outcome,
+            Outcome::Allowed,
+            "with the nonce store removed, replay protection must be off",
+        );
+    }
+}
