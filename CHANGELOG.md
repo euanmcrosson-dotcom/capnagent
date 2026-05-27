@@ -19,6 +19,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed a stale doc comment in `@capnagent`'s `index.ts` that claimed `./wasm`
   re-exports a `__wasm-stub`; it re-exports the real `crates/capnagent-wasm/pkg/`
   output from `npm run build:wasm`.
+- **`capnagent-py` now carries its own adversarial proof.** Ported three
+  purple-team rounds to pytest (`tests/test_purple_team.py`): round 01
+  (cross-server confused deputy — a path/tool-scoped capability denies the
+  hijacked read), round 03 (capability broadening — mutating or dropping a
+  caveat is caught by the HMAC chain gate before any caveat evaluation), and
+  round 07 (the `matches` substring foot-gun vs the anchored `starts_with`
+  fix). Enforced by a new `python-tests` CI job (build wheel → install →
+  pytest); all 16 Python tests pass.
+- Fixed `crates/capnagent-py/pyproject.toml`: it declared no version source, so
+  maturin >= 1.8 refused to build the wheel. Added `dynamic = ["version"]` to
+  single-source the version from the Cargo workspace (`version.workspace`).
 
 ### Added (v0.8.0 — `capnagent issue --from-caveats`, the Find → Bind CLI handoff)
 

@@ -4,6 +4,10 @@ build-backend = "maturin"
 
 [project]
 name = "capnagent"
+# Version is single-sourced from the Cargo workspace (capnagent-py inherits
+# `version.workspace = true`); maturin fills it in. Required by maturin >= 1.8,
+# which refuses to build without either `version` or `dynamic = ["version"]`.
+dynamic = ["version"]
 description = "Capability-based authority tokens for AI agent tool calls. Python bindings."
 readme = "README.md"
 requires-python = ">=3.8"

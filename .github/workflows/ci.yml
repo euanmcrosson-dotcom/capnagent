@@ -125,3 +125,30 @@ jobs:
 
       - name: workspace tests (TS packages + demo)
         run: npm test --workspaces --if-present
+
+  # Python bindings — builds a wheel and runs the pytest suite (smoke tests +
+  # the ported purple-team rounds 01/03/07), so the PyPI package's adversarial
+  # proof is enforced on every push, not just shipped alongside it.
+  python-tests:
+    name: capnagent-py pytest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        with:
+          shared-key: python-tests
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: install maturin + pytest
+        run: pip install maturin pytest
+
+      - name: build + install the wheel
+        run: |
+          maturin build --release --manifest-path crates/capnagent-py/Cargo.toml --out dist
+          pip install --no-index --find-links dist capnagent
+
+      - name: pytest (smoke + purple-team rounds)
+        run: pytest crates/capnagent-py/tests -q
