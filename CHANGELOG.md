@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### CLI — `capnagent` is now a full tool (verify / inspect / keygen), and `mint` produces verifiable tokens
+
+- New subcommands:
+  - `verify <token> --context <json>` — runs the full pipeline and prints the
+    receipt; exit **0** (allowed) / **2** (denied) / **1** (chain or audit
+    failure).
+  - `inspect <token>` — decode identifier / caveats / holder-of-key without a
+    key (no signature check; never implies authenticity).
+  - `keygen` — emit a fresh base64 CSPRNG root key.
+- **Removed the silent placeholder signing key.** Every key-using path now
+  fails closed with a clear message if no `--key` / `CAPNAGENT_KEY` is given —
+  a security tool must never mint under a hardcoded public key.
+- **Fixed `mint` to emit *verifiable* caveats.** The legacy flat mint previously
+  produced caveats that could never pass verification: `tool in [...]` (no `in`
+  operator exists in the caveat DSL), bare-ident limits, and `ttl == "24h"`
+  (`ttl` is not a context field). Now: `tool == "x"` (OR-chained for multiple
+  tools), `arg.<key>` limits, and an enforceable `now <= @<rfc3339>` expiry.
+  *Behaviour change:* tokens minted via `capframe bind` now carry different
+  (verifiable) caveat text.
+- New integration test suite (`tests/cli.rs`): keygen, fail-closed key handling,
+  and a mint → inspect → verify allow/deny round-trip.
+
+### Tests — `capnagent-wasm` verify pipeline covered directly
+
+- Added `#[wasm_bindgen_test]` cases (run via `wasm-pack test --node`) for the
+  full verify surface, not just the chain check: `verifyWithContextJson`
+  allow/deny, revoked-capability denial after `withRevocationList`, and
+  rejection of a revocation list signed under the wrong root key.
+
 ### Added — `capnagent-py` full API parity (no longer a security subset)
 
 - The Python bindings previously exposed only issue / attenuate /

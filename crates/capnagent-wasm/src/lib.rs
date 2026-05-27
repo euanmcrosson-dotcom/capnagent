@@ -875,4 +875,102 @@ mod wasm_tests {
     fn parse_rejects_malformed_token() {
         assert!(Capability::parse("not-a-valid-token").is_err());
     }
+
+    // ── verify pipeline (B3): exercise the full verify surface at the WASM
+    // boundary, not just the chain check ──────────────────────────────────
+
+    const AUDIT_KEY: &[u8] = b"capnagent-wasm-test-audit-key-001";
+    const CTX_IN_SCOPE: &str =
+        r#"{"caller":"x","tool":"checkout.purchase","args":{},"nowMs":1700000000000}"#;
+    const CTX_OUT_OF_SCOPE: &str =
+        r#"{"caller":"x","tool":"bank.wire","args":{},"nowMs":1700000000000}"#;
+
+    /// Pull `outcome.kind` out of a JsValue receipt.
+    fn outcome_kind(receipt: &wasm_bindgen::JsValue) -> String {
+        let v: serde_json::Value =
+            serde_wasm_bindgen::from_value(receipt.clone()).expect("receipt → json");
+        v["outcome"]["kind"]
+            .as_str()
+            .expect("receipt.outcome.kind")
+            .to_string()
+    }
+
+    fn scoped_cap(identifier: &str) -> Capability {
+        ok(
+            ok(
+                Issuer::from_key(KEY)
+                    .issue(identifier.into())
+                    .caveat("tool == \"checkout.purchase\"".into()),
+                "caveat",
+            )
+            .build(),
+            "build",
+        )
+    }
+
+    #[wasm_bindgen_test]
+    fn verify_with_context_allows_in_scope_and_denies_out_of_scope() {
+        let cap = scoped_cap("checkout");
+        let auditor = ok(Auditor::new(AUDIT_KEY), "auditor");
+        let v = Verifier::new(KEY);
+
+        let allowed = ok(
+            v.verify_with_context_json(&cap, CTX_IN_SCOPE, &auditor),
+            "verify in-scope",
+        );
+        assert_eq!(outcome_kind(&allowed), "allowed");
+
+        let denied = ok(
+            v.verify_with_context_json(&cap, CTX_OUT_OF_SCOPE, &auditor),
+            "verify out-of-scope",
+        );
+        assert_eq!(outcome_kind(&denied), "denied");
+    }
+
+    #[wasm_bindgen_test]
+    fn revoked_capability_is_denied_after_installing_the_list() {
+        let cap = scoped_cap("buy-123");
+        let auditor = ok(Auditor::new(AUDIT_KEY), "auditor");
+
+        // Not revoked yet → allowed.
+        let v = Verifier::new(KEY);
+        assert_eq!(
+            outcome_kind(&ok(
+                v.verify_with_context_json(&cap, CTX_IN_SCOPE, &auditor),
+                "verify (not revoked)"
+            )),
+            "allowed"
+        );
+
+        // Issuer revokes the identifier and publishes a signed list.
+        let mut revoker = Revoker::new(KEY);
+        revoker.revoke("buy-123".into());
+        let list = revoker.publish(1_700_000_000_000);
+
+        // Verifier installs it → the same call is now denied.
+        let mut v2 = Verifier::new(KEY);
+        ok(v2.with_revocation_list(&list), "install revocation list");
+        assert!(ok(v2.has_revocation_list(), "has_revocation_list"));
+        assert_eq!(
+            outcome_kind(&ok(
+                v2.verify_with_context_json(&cap, CTX_IN_SCOPE, &auditor),
+                "verify (revoked)"
+            )),
+            "denied"
+        );
+    }
+
+    #[wasm_bindgen_test]
+    fn revocation_list_signed_under_wrong_key_is_rejected() {
+        let other_key = b"a-different-32-byte-root-key-here";
+        let mut revoker = Revoker::new(other_key);
+        revoker.revoke("buy-123".into());
+        let forged = revoker.publish(1_700_000_000_000);
+
+        let mut v = Verifier::new(KEY);
+        assert!(
+            v.with_revocation_list(&forged).is_err(),
+            "a list signed under the wrong root key must not install"
+        );
+    }
 }
