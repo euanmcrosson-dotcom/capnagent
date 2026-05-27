@@ -130,8 +130,14 @@ jobs:
       - name: npm run build:wasm:node
         run: npm run build:wasm:node
 
-      - name: build @capnagent/core dist (required by demo)
-        run: npm run -w @capnagent/core build
+      # Build the publishable dist for both packages before the workspace
+      # tests: the examples consume @capnagent/core and @capnagent/mcp via
+      # their package `exports` (now dist/, not raw src/), so the dist must
+      # exist or vitest fails to resolve the entry.
+      - name: build @capnagent/core + @capnagent/mcp dist
+        run: |
+          npm run -w @capnagent/core build
+          npm run -w @capnagent/mcp build
 
       - name: workspace tests (TS packages + demo)
         run: npm test --workspaces --if-present
