@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+_Nothing pending._
+
+## [0.9.0] - 2026-05-27
+
+Post-0.8.0 hardening: Python binding brought to full security parity, the CLI
+made a real tool, the JS error contract corrected, resource management resolved,
+the examples wired to the real recon format, the DSL parser fuzzed, and
+CI-enforced coverage gates added on both the Rust engine and the TS SDK.
+
 ### Added — CI-enforced coverage gates on the security surfaces
 
 - **Rust engine (`capnagent-core`)**: new `coverage` CI job runs
@@ -171,6 +180,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed `crates/capnagent-py/pyproject.toml`: it declared no version source, so
   maturin >= 1.8 refused to build the wheel. Added `dynamic = ["version"]` to
   single-source the version from the Cargo workspace (`version.workspace`).
+
+## [0.8.0 and earlier]
+
+Historical entries retain their per-release `(vX.Y.Z)` annotation; tagged
+releases are recorded in git (`git tag`).
 
 ### Added (v0.8.0 — `capnagent issue --from-caveats`, the Find → Bind CLI handoff)
 

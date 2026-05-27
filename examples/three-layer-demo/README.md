@@ -112,5 +112,5 @@ If `demo.py` errors:
 |---|---|---|
 | `ImportError: capnagent` | Stale install | `pip install --upgrade capnagent` |
 | `ImportError: mcp_guard` | Different package name | `pip install mcp-guardrails` (note the package name on PyPI is `mcp-guardrails`; the import name is `mcp_guard`) |
-| `AttributeError: ... Issuer ...` | API drift between capnagent versions | Pin `capnagent==0.7.4` |
+| `AttributeError: ... Issuer ...` | Stale install predating the full API | `pip install --upgrade 'capnagent>=0.9.0'` |
 | `KeyError: 'plans'` / `unexpected schema` | sample-caveats.json hand-edited | Restore from git |
