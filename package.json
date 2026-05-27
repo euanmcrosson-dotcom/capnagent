@@ -14,6 +14,7 @@
   ],
   "scripts": {
     "build:wasm": "wasm-pack build crates/capnagent-wasm --target bundler --out-dir pkg",
+    "build:wasm:node": "wasm-pack build crates/capnagent-wasm --target nodejs --out-dir ../../packages/capnagent/wasm",
     "smoke:wasm": "node scripts/wasm-smoke.mjs",
     "test": "npm run -ws --if-present test",
     "lint": "npm run -ws --if-present lint",

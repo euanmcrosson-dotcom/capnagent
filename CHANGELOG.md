@@ -7,7 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_Nothing pending._
+### Added — `@capnagent/core` + `@capnagent/mcp` are now publishable to npm
+
+- Both TS packages were `private`, unbuilt, and referenced the WASM via a path
+  outside the package (`../../../crates/...`) — so neither could be installed
+  and used off-disk. Reworked them to publish as self-contained, Node-first
+  packages (versioned 0.9.0, ready for an `npm-v0.9.0` publish):
+  - `@capnagent/core` now vendors a **`--target nodejs`** wasm-pack build into
+    `wasm/` (loads the `.wasm` synchronously via `fs` at import — runs in plain
+    Node, no bundler), with `wasm.ts` pointing at the local copy. Verified by
+    installing the packed tarball as an external consumer and running
+    mint → verify (allow + deny).
+  - `@capnagent/mcp` now compiles to `dist/` (was shipping raw `.ts`), with
+    `.js` import extensions for Node ESM, and depends on `@capnagent/core` via
+    `^0.9.0` (was `*`). Verified by a cross-package consumer install +
+    guarded-call smoke (allow runs the tool, deny never invokes it).
+  - Metadata, `publishConfig` (public + provenance), `engines`, and a `prepack`
+    that strips wasm-pack's `wasm/.gitignore: *` (which otherwise silently drops
+    the WASM from the tarball) added to both.
+- New `publish-npm.yml` workflow: tag-driven on `npm-v*` (independent of the
+  `v*` and `py-v*` streams), provenance via OIDC, core published before mcp; a
+  manual dispatch defaults to a dry run. CI now also asserts both tarballs are
+  self-contained on every push, so the `.gitignore` trap can't regress.
 
 ## [0.9.0] - 2026-05-27
 

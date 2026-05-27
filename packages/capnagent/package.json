@@ -1,9 +1,8 @@
 {
   "name": "@capnagent/core",
-  "version": "0.0.1",
+  "version": "0.9.0",
   "description": "Idiomatic TypeScript wrapper around the capnagent WASM artifact: capabilities, verification, and audit receipts for AI agent tool calls.",
   "license": "Apache-2.0",
-  "private": true,
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -15,10 +14,37 @@
   },
   "files": [
     "dist",
-    "src"
+    "wasm"
   ],
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "keywords": [
+    "capability",
+    "authorization",
+    "ai-agents",
+    "mcp",
+    "security",
+    "macaroons",
+    "wasm"
+  ],
+  "homepage": "https://capframe.ai",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/euanmcrosson-dotcom/capnagent.git",
+    "directory": "packages/capnagent"
+  },
+  "bugs": {
+    "url": "https://github.com/euanmcrosson-dotcom/capnagent/issues"
+  },
+  "author": "Euan McRosson <euanmcrosson@gmail.com>",
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
+    "prepack": "npm run build && node -e \"require('fs').rmSync('wasm/.gitignore',{force:true})\"",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",

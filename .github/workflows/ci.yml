@@ -114,11 +114,21 @@ jobs:
       - name: npm ci (workspace root)
         run: npm ci
 
+      # Bundler-target build + .d.ts contract smoke. The published packages no
+      # longer consume this output (they use the nodejs target vendored below),
+      # but it keeps the bundler artifact + the locked export surface validated
+      # for any future bundler consumer.
       - name: npm run build:wasm
         run: npm run build:wasm
 
       - name: node smoke test
         run: npm run smoke:wasm
+
+      # nodejs-target build vendored into @capnagent/core (what the SDK and its
+      # tests actually load — runs in plain Node, no bundler). Required before
+      # building/testing the TS packages.
+      - name: npm run build:wasm:node
+        run: npm run build:wasm:node
 
       - name: build @capnagent/core dist (required by demo)
         run: npm run -w @capnagent/core build
@@ -131,6 +141,26 @@ jobs:
       # an unguarded regression in index.ts fails here.
       - name: SDK coverage gate (@capnagent/core)
         run: npm run -w @capnagent/core test:coverage
+
+      # Guard the publishable tarballs: build the dist, pack, and assert each
+      # is self-contained. Catches the wasm-pack `.gitignore: *` trap (which
+      # silently drops the vendored WASM) and any missing-dist regression
+      # before a release tag ever reaches npm.
+      - name: verify npm tarballs are self-contained
+        run: |
+          npm run -w @capnagent/core build
+          npm run -w @capnagent/mcp build
+          npm pack -w @capnagent/core --pack-destination /tmp >/dev/null
+          npm pack -w @capnagent/mcp --pack-destination /tmp >/dev/null
+          echo "--- @capnagent/core tarball ---"
+          tar -tzf /tmp/capnagent-core-*.tgz | grep -q 'wasm/capnagent_wasm_bg.wasm' \
+            || { echo "FAIL: @capnagent/core tarball is missing the vendored WASM"; exit 1; }
+          tar -tzf /tmp/capnagent-core-*.tgz | grep -q 'dist/index.js' \
+            || { echo "FAIL: @capnagent/core tarball is missing dist/index.js"; exit 1; }
+          echo "--- @capnagent/mcp tarball ---"
+          tar -tzf /tmp/capnagent-mcp-*.tgz | grep -q 'dist/index.js' \
+            || { echo "FAIL: @capnagent/mcp tarball is missing dist/index.js"; exit 1; }
+          echo "OK: both tarballs are self-contained"
 
   # Python bindings — builds a wheel and runs the pytest suite (smoke tests +
   # the ported purple-team rounds 01/03/07), so the PyPI package's adversarial

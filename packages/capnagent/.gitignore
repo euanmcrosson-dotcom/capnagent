@@ -1,5 +1,2 @@
-node_modules/
-dist/
+wasm/
 coverage/
-*.log
-.DS_Store

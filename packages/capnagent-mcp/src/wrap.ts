@@ -1,5 +1,5 @@
-import { CapabilityDeniedError } from "./errors";
-import { type MCPClientLike, type WrapOptions, __assertSignerIfHok, __decide } from "./guard";
+import { CapabilityDeniedError } from "./errors.js";
+import { type MCPClientLike, type WrapOptions, __assertSignerIfHok, __decide } from "./guard.js";
 
 /**
  * Wrap an MCP client so every `callTool()` is gated by a capability.

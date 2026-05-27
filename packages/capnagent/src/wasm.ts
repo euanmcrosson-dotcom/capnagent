@@ -1,14 +1,18 @@
 /**
  * Indirection point for the underlying WASM module.
  *
- * Resolves to the wasm-pack output produced by `npm run build:wasm` at
- * the repo root. Run that once after a fresh clone — the `pkg/`
- * directory is gitignored, by design, so the build artifact stays
- * out of version control.
+ * Resolves to the `--target nodejs` wasm-pack output vendored into this
+ * package's `wasm/` directory by `npm run build:wasm:node` (run from the
+ * repo root). The nodejs target loads the `.wasm` synchronously via
+ * `fs.readFileSync` at import time, so the published package runs in plain
+ * Node with no bundler. The same path resolves identically from `src/`
+ * (tests) and `dist/` (published), since both sit one level under the
+ * package root alongside `wasm/`. `wasm/` is gitignored (a build artifact)
+ * but shipped in the npm tarball via the `files` allowlist.
  */
 
-export * from "../../../crates/capnagent-wasm/pkg/capnagent_wasm.js";
-export type * from "../../../crates/capnagent-wasm/pkg/capnagent_wasm.js";
+export * from "../wasm/capnagent_wasm.js";
+export type * from "../wasm/capnagent_wasm.js";
 
 /**
  * Wire-format receipt as it comes back from the WASM boundary, before

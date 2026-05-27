@@ -1,0 +1,97 @@
+name: publish-npm
+
+# Publishes @capnagent/core and @capnagent/mcp to npm. Runs only on tags
+# matching `npm-v*` (an independent version stream from the `v*` Rust/CLI tags
+# and the `py-v*` Python tags), or on a manual dispatch — and a dispatch
+# defaults to a DRY RUN, so nothing reaches npm unless explicitly asked.
+#
+# To publish:
+#   1. Bump the package versions (packages/capnagent*/package.json) + push.
+#   2. git tag npm-v0.9.0 && git push origin npm-v0.9.0
+#
+# core is published before mcp because @capnagent/mcp depends on
+# @capnagent/core (^0.9.0); a consumer installing mcp needs core already live.
+#
+# Requirements (one-time, maintainer):
+#   - Repo secret NPM_TOKEN: an npm automation/granular token with publish
+#     rights to the @capnagent scope.
+#   - Provenance is attached via OIDC (`id-token: write` below + the
+#     `publishConfig.provenance` flag in each package.json); the repo must be
+#     public for npm to accept the provenance attestation.
+
+on:
+  push:
+    tags: ["npm-v*"]
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Actually publish to npm (otherwise dry-run)"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "true"
+          - "false"
+
+permissions:
+  contents: read
+  id-token: write # npm provenance attestation
+
+jobs:
+  publish:
+    name: build + publish (@capnagent/core, @capnagent/mcp)
+    runs-on: ubuntu-latest
+    # Belt-and-braces: only a real `npm-v*` tag, or an explicit dispatch, gets
+    # this far. A stray `v*` / `py-v*` release event can never publish to npm.
+    if: startsWith(github.ref, 'refs/tags/npm-v') || github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        with:
+          shared-key: publish-npm
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: install wasm-pack
+        run: cargo install --locked wasm-pack
+
+      - name: npm ci
+        run: npm ci
+
+      # The SDK loads this vendored nodejs-target build; the per-package
+      # prepack (tsc + strip wasm/.gitignore) then completes the tarball.
+      - name: build vendored nodejs wasm
+        run: npm run build:wasm:node
+
+      - name: build dist (core + mcp)
+        run: |
+          npm run -w @capnagent/core build
+          npm run -w @capnagent/mcp build
+
+      # On a tag push: publish for real. On manual dispatch: dry-run unless
+      # `publish=true` was selected. core first (mcp depends on it).
+      - name: publish @capnagent/core
+        run: |
+          DRY=""
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.publish }}" != "true" ]; then
+            DRY="--dry-run"
+            echo "::notice::Dispatch without publish=true — dry run only."
+          fi
+          npm publish -w @capnagent/core --provenance --access public $DRY
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: publish @capnagent/mcp
+        run: |
+          DRY=""
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.publish }}" != "true" ]; then
+            DRY="--dry-run"
+          fi
+          npm publish -w @capnagent/mcp --provenance --access public $DRY
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

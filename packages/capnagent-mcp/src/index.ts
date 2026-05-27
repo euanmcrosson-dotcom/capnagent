@@ -8,12 +8,12 @@
  * See `docs/WEEK3_SPEC.md` §3.3 for the locked public API.
  */
 
-export { CapabilityDeniedError } from "./errors";
+export { CapabilityDeniedError } from "./errors.js";
 export {
   guardCall,
   type ContextProvider,
   type GuardedResult,
   type MCPClientLike,
   type WrapOptions,
-} from "./guard";
-export { wrapMCPClient } from "./wrap";
+} from "./guard.js";
+export { wrapMCPClient } from "./wrap.js";
