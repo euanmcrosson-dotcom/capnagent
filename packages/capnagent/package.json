@@ -20,6 +20,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
     "lint": "biome check src",
     "lint:fix": "biome check --write src",
@@ -28,6 +29,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "1.9.4",
+    "@vitest/coverage-v8": "^2.1.9",
     "typescript": "5.6.3",
     "vite-plugin-top-level-await": "^1.2.2",
     "vite-plugin-wasm": "^3.6.0",

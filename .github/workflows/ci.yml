@@ -126,6 +126,12 @@ jobs:
       - name: workspace tests (TS packages + demo)
         run: npm test --workspaces --if-present
 
+      # Coverage gate on the security-critical SDK wrapper (verify path +
+      # error mapping). Thresholds live in packages/capnagent/vitest.config.ts;
+      # an unguarded regression in index.ts fails here.
+      - name: SDK coverage gate (@capnagent/core)
+        run: npm run -w @capnagent/core test:coverage
+
   # Python bindings — builds a wheel and runs the pytest suite (smoke tests +
   # the ported purple-team rounds 01/03/07), so the PyPI package's adversarial
   # proof is enforced on every push, not just shipped alongside it.
@@ -154,3 +160,31 @@ jobs:
 
       - name: pytest (smoke + purple-team rounds)
         run: pytest crates/capnagent-py/tests -q
+
+  # Coverage gate on the security engine. capnagent-core is the only crate
+  # whose line coverage we enforce: the CLI is a thin binary, the wasm/py
+  # bindings are exercised through their own consumers (wasm-pack test, pytest),
+  # but the engine — issuer, verifier, caveat DSL, audit, revocation, replay —
+  # is where an untested branch is a fail-open. Measured on Linux because the
+  # windows-gnu toolchain ships no profiler runtime (can't instrument locally).
+  coverage:
+    name: coverage gate (capnagent-core)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        with:
+          shared-key: coverage
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov
+
+      # --summary-only prints the table so the real number is visible in the
+      # log; --fail-under-lines is the enforced floor. Ratcheted to the
+      # measured baseline once CI reports it — raise as coverage improves,
+      # never lower.
+      - name: cargo llvm-cov (capnagent-core, gated)
+        run: cargo llvm-cov -p capnagent-core --summary-only --fail-under-lines 85

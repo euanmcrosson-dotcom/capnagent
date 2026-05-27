@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — CI-enforced coverage gates on the security surfaces
+
+- **Rust engine (`capnagent-core`)**: new `coverage` CI job runs
+  `cargo-llvm-cov` and fails under a line floor. Only the engine is gated —
+  issuer, verifier, caveat DSL, audit, revocation, replay — because that's
+  where an untested branch is a fail-open; the CLI is a thin binary and the
+  wasm/py bindings are covered through their own consumers (`wasm-pack test`,
+  pytest). Measured on Linux (the windows-gnu toolchain ships no profiler
+  runtime, so coverage can't be instrumented locally).
+- **TS SDK (`@capnagent/core`)**: `test:coverage` enforces line/branch/function
+  thresholds (`vitest.config.ts`) on the wrapper logic — `index.ts` (verify +
+  error mapping), `errors.ts`, `translate.ts`. The re-export shim `wasm.ts` and
+  the type-only `types.ts` are excluded so the gate guards real logic. Wired
+  into the `wasm-build` job.
+- Closed the untested error-mapping branches that the gate exposed: added
+  `error-mapping.test.ts` asserting the **typed-error contract** on the paths a
+  caller most needs to fail closed — `holderOfKey` rejecting a non-32-byte
+  ed25519 pubkey, `verifyWithContextJson` surfacing malformed / field-missing
+  JSON as a typed `CapabilityError` (never a silent allow), and `popChallengeFor`
+  on a disposed handle throwing rather than hitting WASM UB. (`index.ts` line
+  coverage 89.8% → 91.4%.)
+
 ### Tests / Docs — caveat-DSL parser fuzzed; stale A.1 "parked" note corrected
 
 - Added proptest **fuzz of `caveat_dsl::parse`**: it must never panic on
