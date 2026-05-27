@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (v0.8.0 — `capnagent issue --from-caveats`, the Find → Bind CLI handoff)
+
+- **New `capnagent issue --from-caveats <file>` subcommand.** Reads an
+  `mcp-recon/v0.1/caveats` artifact and mints one capability token per
+  `scope` plan; `deny` (code-execution) tools are reported and
+  intentionally NOT granted. Output is
+  `{ issued: [{tool, token, caveats}], denied: [{tool, reason}] }`.
+  Completes the pipeline end-to-end on the CLI:
+  `mcp-recon enumerate → mcp-recon caveats → capnagent issue`.
+- Every caveat is validated against the caveat DSL (`caveat_dsl::parse`)
+  before a token is minted — a malformed predicate fails closed rather
+  than producing a token nobody can evaluate.
+- The legacy flat invocation (`--agent --tools --limit --ttl`, dispatched
+  by `capframe bind`) is unchanged; the new behaviour is a subcommand.
+
 ### Changed (py-v0.7.4 — workspace version aligned with Python release tags)
 
 - **Workspace version bumped `0.0.1` → `0.7.4`.** The Python binding

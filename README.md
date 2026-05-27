@@ -88,6 +88,25 @@ Each project stands alone. Together they're a single security
 posture for any MCP-shaped agent. Run mcp-recon first, feed the
 v0.1 caveats artifact into your capnagent issuer, ship.
 
+The handoff is one command on each side — no glue code:
+
+```bash
+# Find: enumerate a server and emit an issuance plan per tool
+mcp-recon enumerate claude_desktop_config.json --out inventory.json
+mcp-recon caveats inventory.json --out caveats.json
+
+# Bind: mint one capability token per `scope` plan; `deny` (code-execution)
+# tools are reported and intentionally NOT granted.
+export CAPNAGENT_KEY=$(openssl rand -base64 32)
+capnagent issue --from-caveats caveats.json --out tokens.json --pretty
+# → capnagent: issued 20 token(s); 3 tool(s) denied (not granted)
+```
+
+Every caveat is validated against the caveat DSL before a token is minted, so a
+malformed predicate fails closed rather than producing a token nobody can
+evaluate. `tokens.json` is `{ issued: [{tool, token, caveats}], denied:
+[{tool, reason}] }`.
+
 ## The purple-team corpus
 
 The library is the engine. The **corpus** is the artifact —
