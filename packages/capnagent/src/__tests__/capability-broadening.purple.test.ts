@@ -64,7 +64,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { Capability, CapabilityChainError, Issuer, Verifier, init } from "../index.js";
+import { Auditor, Capability, CapabilityChainError, Issuer, Verifier, init } from "../index.js";
 
 const ROOT_KEY = new Uint8Array(32).fill(0xc1);
 const ALT_ROOT_KEY = new Uint8Array(32).fill(0xc2);
@@ -373,6 +373,29 @@ describe("Round 03: Capability broadening attempt", () => {
         }
         expect(receipt).toBe("no-receipt-produced");
       }
+    });
+
+    it("verifyWithContext (the adapter path) classifies a forged cap as CapabilityChainError, not Audit", async () => {
+      // Regression for `mapWasmError(_, "either")`: the chain-integrity message
+      // contains "signature" (the HMAC *chain* signature), which used to
+      // mis-route it to CapabilityAuditError. `verify()` (chain-only) never hit
+      // this because it uses kind:"chain"; the MCP adapter goes through
+      // `verifyWithContext` (kind:"either"), so this is the path that matters.
+      const cap = await issueLegitCap();
+      const wire = decodeToken(cap.serialize());
+      wire.caveats[1] = { predicate: 'tool == "bank.wire"' }; // widen → break the chain
+      const forged = Capability.parse(encodeToken(wire));
+
+      const auditor = new Auditor(new Uint8Array(32).fill(0xa1));
+      const ctx = {
+        caller: "agent:planner",
+        tool: "bank.wire",
+        args: {},
+        nowMs: 1_700_000_000_000,
+      };
+      expect(() => new Verifier(ROOT_KEY).verifyWithContext(forged, ctx, auditor)).toThrow(
+        CapabilityChainError,
+      );
     });
   });
 

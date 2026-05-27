@@ -96,6 +96,13 @@ function mapWasmError(e: unknown, kind: ErrorKind): never {
   }
   if (kind === "either") {
     const lower = message.toLowerCase();
+    // A chain-integrity failure ("capability chain integrity: signature
+    // mismatch") legitimately mentions "signature" — the HMAC *chain*
+    // signature. Classify by the dominant signal: "chain" wins, so a forged /
+    // broadened token is a CapabilityChainError, not a CapabilityAuditError.
+    if (lower.includes("chain")) {
+      throw new CapabilityChainError(message);
+    }
     if (lower.includes("audit") || lower.includes("signature") || lower.includes("tamper")) {
       throw new CapabilityAuditError(message);
     }

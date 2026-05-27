@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — `@capnagent/core` mis-classified chain-integrity errors on the `verifyWithContext` path
+
+- `verifyWithContext`'s error mapping (`mapWasmError(_, "either")`) sniffed the
+  message for `"signature"` before recognizing `"chain"`. A forged/broadened
+  token produces `"capability chain integrity: signature mismatch"` — which
+  mentions the HMAC *chain* signature — so it was wrongly surfaced as a
+  `CapabilityAuditError` instead of a `CapabilityChainError`. `"chain"` now
+  wins. (The chain-only `verify()` path was already correct — it uses
+  `kind:"chain"`, so the existing broadening tests never exercised this.)
+- Found by the new `@capnagent/mcp` end-to-end tests (below); a SDK-level
+  regression test was added on the `verifyWithContext` path.
+
+### Tests — `@capnagent/mcp` end-to-end against the real engine
+
+- The adapter's unit tests use a mocked verifier (they prove control flow —
+  inner-once, error propagation, `onReceipt` resilience). Added
+  `e2e.purple.test.ts` driving `wrapMCPClient` / `guardCall` against the **real
+  WASM engine** with real `Issuer`-minted capabilities: round 01 (confused
+  deputy — out-of-sandbox/cross-tool calls denied, underlying never invoked),
+  round 04 (revoked cap denied via a signed `RevocationList`), round 03
+  (tampered cap → `CapabilityChainError` propagated, not remapped), and an
+  audit-valid-receipt check on the allow path.
+
 ### CLI — `capnagent` is now a full tool (verify / inspect / keygen), and `mint` produces verifiable tokens
 
 - New subcommands:
