@@ -12,8 +12,11 @@
  *     `mapWasmError` below; see the comment there for the rules.
  *   - `init()` is idempotent and required. Every other API throws a
  *     descriptive `CapabilityError` if used before `init()` has resolved.
- *   - WASM `free()` is intentionally not exposed. v0 leans on JS GC; v0.1
- *     will adopt explicit-resource-management once `using` is stable.
+ *   - Memory: the GC reclaims WASM handles on its own (wasm-bindgen registers
+ *     each in a FinalizationRegistry), so no manual cleanup is required. For
+ *     deterministic, eager release, `Capability` and `Verifier` expose
+ *     `dispose()` and `Symbol.dispose` — use `using cap = ...` or call
+ *     `cap.dispose()`. Idempotent and safe to combine with GC.
  *
  * See `docs/WEEK3_SPEC.md` §3.2 for the locked contract.
  */
@@ -58,6 +61,26 @@ function ensureReady(): void {
       "capnagent: init() must be called and awaited before using any other API",
     );
   }
+}
+
+// ---------------------------------------------------------------------------
+// Deterministic disposal (`using` / Symbol.dispose)
+// ---------------------------------------------------------------------------
+//
+// wasm-bindgen registers each handle in a FinalizationRegistry, so the GC
+// reclaims the WASM allocation on its own — there is no leak if you do
+// nothing. Disposal is for callers who want to release a handle EAGERLY
+// (long-running services that mint many capabilities, memory-sensitive
+// paths). `_inner.free()` is double-free-safe: it unregisters the finalizer,
+// and the WeakSet below makes `dispose()` idempotent. After disposal the
+// wrapper must not be used again.
+
+const disposedHandles = new WeakSet<object>();
+
+function disposeHandle(self: object, inner: { free(): void }): void {
+  if (disposedHandles.has(self)) return;
+  disposedHandles.add(self);
+  inner.free();
 }
 
 // ---------------------------------------------------------------------------
@@ -177,6 +200,20 @@ export class Capability {
   get holderOfKey(): Uint8Array | undefined {
     ensureReady();
     return this._inner.holderOfKey;
+  }
+
+  /**
+   * Eagerly release the underlying WASM handle. Idempotent. Optional — the GC
+   * reclaims it via a FinalizationRegistry otherwise. After calling this, do
+   * not use the capability again. Also wired to `Symbol.dispose`, so
+   * `using cap = issuer.issue(...).build()` releases it at scope exit.
+   */
+  dispose(): void {
+    disposeHandle(this, this._inner);
+  }
+
+  [Symbol.dispose](): void {
+    this.dispose();
   }
 }
 
@@ -752,6 +789,20 @@ export class Verifier {
     } catch (e) {
       mapWasmError(e, "either");
     }
+  }
+
+  /**
+   * Eagerly release the underlying WASM handle (and any installed nonce store
+   * / revocation list it owns). Idempotent. Optional — the GC reclaims it via
+   * a FinalizationRegistry otherwise. Wired to `Symbol.dispose`, so
+   * `using verifier = new Verifier(key)` releases it at scope exit.
+   */
+  dispose(): void {
+    disposeHandle(this, this._inner);
+  }
+
+  [Symbol.dispose](): void {
+    this.dispose();
   }
 }
 

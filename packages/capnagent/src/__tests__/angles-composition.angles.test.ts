@@ -432,13 +432,10 @@ describe("Angle 7 — Capability is immutable from JS; mutating the wire-form ob
     const cap = Issuer.fromKey(ROOT_KEY).issue("immut").caveat(FUTURE).build();
 
     // Public surface: identifier (getter), holderOfKey (getter),
-    // serialize, attenuate, parse (static). No setters; no public
-    // caveats / signature field.
-    type CapKeys = keyof Capability;
-    const publicKeys = Object.getOwnPropertyNames(Object.getPrototypeOf(cap)) as readonly (
-      | CapKeys
-      | "constructor"
-    )[];
+    // serialize, attenuate, dispose, parse (static). No setters; no public
+    // caveats / signature field. (`getOwnPropertyNames` returns only string
+    // keys, so the symbol-keyed `[Symbol.dispose]` is intentionally excluded.)
+    const publicKeys = Object.getOwnPropertyNames(Object.getPrototypeOf(cap));
 
     // No "caveats" / "signature" property on the public class.
     const exposedNames = new Set<string>(publicKeys);

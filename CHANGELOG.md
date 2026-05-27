@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — `@capnagent/core` deterministic disposal (`dispose()` / `using`)
+
+- `Capability` and `Verifier` now expose `dispose()` and `[Symbol.dispose]`, so
+  callers can release a WASM handle eagerly — `using cap = issuer.issue(...)
+  .build()` frees it at scope exit, or call `cap.dispose()` explicitly. Both are
+  idempotent and double-free-safe.
+- Resolves the long-standing "v0.1 will adopt explicit-resource-management once
+  `using` is stable" deferral in the package header. The truth, now documented:
+  the GC already reclaims handles via wasm-bindgen's FinalizationRegistry (no
+  leak, no manual free required) — disposal is purely for deterministic, eager
+  release in long-running / memory-sensitive paths. (`lib` gains
+  `esnext.disposable` for the `Symbol.dispose` type.)
+
 ### Fixed — `@capnagent/core` mis-classified chain-integrity errors on the `verifyWithContext` path
 
 - `verifyWithContext`'s error mapping (`mapWasmError(_, "either")`) sniffed the
