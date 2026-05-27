@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Tests / Docs — caveat-DSL parser fuzzed; stale A.1 "parked" note corrected
+
+- Added proptest **fuzz of `caveat_dsl::parse`**: it must never panic on
+  arbitrary text or DSL-token soup (operators, quotes, backslashes,
+  `@timestamps`, malformed numbers, parens). `parse` ingests untrusted caveat
+  text from inside a serialized capability — a panic there is a process abort /
+  fail-open, not a clean deny. A string that *does* parse must also `evaluate`
+  without panicking. Runs in stable CI (proptest, no libfuzzer/nightly).
+- Corrected the README purple-team summary: angle **A.1** (sub-ulp f64
+  coercion) was still marked "PARKED" but has been **CLOSED since v0.6** (the
+  integer-domain rule + `serde_json` `arbitrary_precision`; `ROADMAP.md` and the
+  Python `test_v0_6_integer_caveat_rejects_decimal_arg` already reflected it).
+
 ### Fixed / Tests — three-layer Find→Bind→Guard demo consumes the *real* mcp-recon format, now CI-tested
 
 - The demo's `sample-caveats.json` was a fabricated shape (`$schema`,

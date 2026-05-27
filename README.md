@@ -185,10 +185,18 @@ defects in our own code.** v0.5 closes 3 of 4:
   god-mode token. CLOSED: WASM `build()` throws if caveat list is
   empty.
 - **A.1** — sub-ulp f64 numeric coercion (`50.000000000000001`
-  collapses to `50.0`, satisfies `arg.amount <= 50`). PARKED under
-  design discussion — integer-only mode for monetary caveats is the
-  likely fix; not in v0.5 because it's an API-shape decision worth
-  taking time on.
+  collapses to `50.0`, satisfies `arg.amount <= 50`). **CLOSED in v0.6.**
+  `capnagent-core` parses JSON with `serde_json`'s `arbitrary_precision`,
+  and the integer-domain rule denies a float-syntactic argument against an
+  integer-syntactic caveat literal (arg `50.000000000000001` vs caveat
+  `arg.amount <= 50`). This requires the raw-JSON verify path
+  (`verifyWithContextJson`, or Python's `json.dumps`, which preserve the
+  number's source text past the parse boundary). The JS-object path
+  (`verifyWithContext`) still has f64 collapsed by JS's `JSON.parse` before
+  WASM sees it, so the documented `_cents` integer-money mitigation applies
+  there — which is also why the once-considered "integer-only mode" was
+  unnecessary as a separate API. Regression: `replay-attack`/`angles` suites
+  + the Python `test_v0_6_integer_caveat_rejects_decimal_arg`.
 
 See [`CHANGELOG.md`](CHANGELOG.md) for the full finding list.
 

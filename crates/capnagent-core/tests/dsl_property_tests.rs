@@ -459,4 +459,42 @@ proptest! {
         // call returns at all.
         let _ = evaluate(&pred, &ctx);
     }
+
+    /// **Fuzz: `parse` never panics on arbitrary input.** `parse` is the
+    /// boundary that ingests untrusted caveat text (a caveat arrives over the
+    /// wire inside a serialized capability). It must return `Ok` or a
+    /// `DslError` for ANY byte string — a panic in a security gate is a
+    /// process abort / DoS, never a clean deny. The well-formed-AST property
+    /// above only covers strings the generator already knows parse; this
+    /// covers everything else.
+    #[test]
+    fn parse_never_panics_on_arbitrary_text(s in ".*") {
+        let _ = parse(&s); // proptest fails iff this panics
+    }
+
+    /// Same no-panic guarantee, but biased toward DSL-shaped token soup
+    /// (operators, quotes, backslashes, `@timestamps`, units, parens,
+    /// malformed numbers) so the lexer/parser edges are hit far more densely
+    /// than uniform-random unicode would. A string that *does* parse must
+    /// then `evaluate` without panicking either.
+    #[test]
+    fn parse_then_eval_never_panics_on_dsl_token_soup(
+        soup in prop::collection::vec(
+            prop_oneof![
+                Just("tool"), Just("arg.x"), Just("arg.amount"), Just("now"), Just("caller"),
+                Just("=="), Just("!="), Just("<="), Just(">="), Just("<"), Just(">"),
+                Just("matches"), Just("starts_with"), Just("AND"), Just("OR"),
+                Just("("), Just(")"), Just("\""), Just("\\"), Just("@"),
+                Just("50"), Just("50_usd"), Just("12.99"), Just("-1"), Just(".99"), Just("12."),
+                Just("2099-01-01T00:00:00Z"), Just(" "), Just("x"),
+            ],
+            0..32usize,
+        )
+        .prop_map(|tokens| tokens.concat()),
+        ctx in context_strategy(),
+    ) {
+        if let Ok(pred) = parse(&soup) {
+            let _ = evaluate(&pred, &ctx);
+        }
+    }
 }
