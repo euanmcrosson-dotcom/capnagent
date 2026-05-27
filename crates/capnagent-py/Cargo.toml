@@ -30,3 +30,5 @@ capnagent-core = { path = "../capnagent-core", version = "0.8.0" }
 pyo3 = { version = "0.24.1", features = ["extension-module", "abi3-py38"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "=1.0.140", features = ["arbitrary_precision"] }
+# RevocationList wire format (URL-safe, unpadded base64) — same as the wasm crate.
+base64 = "0.22"

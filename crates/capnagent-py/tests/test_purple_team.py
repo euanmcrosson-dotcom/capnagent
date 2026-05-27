@@ -6,13 +6,16 @@ These are the Python-side concrete-evidence counterparts of three rounds from
 PyPI package carries its own adversarial proof rather than inheriting it only
 from the Rust/TS suites.
 
-Rounds ported here are the ones expressible with the bindings' surface (no
-NonceStore / RevocationList / hok-proof is exposed in Python yet, so the
-replay/revocation rounds 02/04/06/08 are out of scope):
+Rounds ported here (the Python binding now exposes the full security surface —
+NonceStore, RevocationList/Revoker, verify_with_proof, pop_challenge_for):
 
   - Round 01 — tool-description injection / cross-server confused deputy
+  - Round 02 — replay of a holder-of-key proof (NonceStore)
   - Round 03 — capability broadening (hostile-holder tampering)
+  - Round 04 — capability revocation (signed RevocationList)
   - Round 07 — fs-sandbox prefix foot-gun (`matches` substring vs `starts_with`)
+
+Round 02 needs an ed25519 signer (`cryptography`); it skips if unavailable.
 
 Run after `maturin develop`:
 
@@ -27,7 +30,16 @@ import os
 
 import pytest
 
-from capnagent import Auditor, Capability, Issuer, Verifier
+from capnagent import (
+    Auditor,
+    Capability,
+    Issuer,
+    NonceStore,
+    RevocationList,
+    Revoker,
+    Verifier,
+    pop_challenge_for,
+)
 
 NOW_MS = 1_700_000_000_000
 
@@ -192,3 +204,136 @@ def test_round_07_matches_is_a_substring_footgun_starts_with_closes_it(keys):
     )
     assert kind(cap_prefix, lateral) == "denied"
     assert kind(cap_prefix, legit) == "allowed"
+
+
+# ─── Round 04 — capability revocation ─────────────────────────────────────────
+
+
+def test_round_04_revoked_capability_is_denied(keys):
+    """Round 04 — a capability is revoked after issuance. Once the issuer
+    publishes a signed RevocationList and the verifier installs it, verifying
+    that capability's identifier is denied `capability revoked` — before, the
+    same call was allowed."""
+    root_key, audit_key = keys
+    cap = (
+        Issuer.from_key(root_key)
+        .issue("buy-123")
+        .caveat('tool == "checkout.purchase"')
+        .build()
+    )
+    auditor = Auditor(audit_key)
+
+    # Before revocation: allowed.
+    before = json.loads(
+        Verifier(root_key).verify_with_context(cap, _ctx("checkout.purchase"), auditor)
+    )
+    assert before["outcome"]["kind"] == "allowed"
+
+    # Issuer revokes the identifier and publishes a signed snapshot.
+    revoker = Revoker(root_key)
+    revoker.revoke("buy-123")
+    rlist = revoker.publish(NOW_MS)
+    assert rlist.contains("buy-123")
+    # Wire round-trip the list the way an issuer would ship it to a verifier.
+    rlist = RevocationList.parse(rlist.serialize())
+
+    # Verifier installs the list; the same call is now DENIED as revoked.
+    v = Verifier(root_key)
+    v.with_revocation_list(rlist)
+    assert v.has_revocation_list()
+    after = json.loads(v.verify_with_context(cap, _ctx("checkout.purchase"), auditor))
+    assert after["outcome"]["kind"] == "denied"
+    assert "revok" in after["outcome"]["reason"].lower()
+
+
+def test_round_04_revocation_list_signed_under_wrong_key_is_rejected(keys):
+    """A revocation list signed under a different root key must NOT install —
+    that integrity check is what stops a forged revocation (or un-revocation)
+    from a party who isn't the issuer."""
+    root_key, _ = keys
+    other_key = os.urandom(32)
+    forged = Revoker(other_key)
+    forged.revoke("buy-123")
+    forged_list = forged.publish(NOW_MS)
+
+    v = Verifier(root_key)
+    with pytest.raises(ValueError, match=r"signature|revocation"):
+        v.with_revocation_list(forged_list)
+    assert not v.has_revocation_list()
+
+
+# ─── Round 02 — replay of a holder-of-key proof ───────────────────────────────
+
+
+def test_round_02_replay_of_hok_proof_is_denied(keys):
+    """Round 02 — a holder-of-key proof, once used, cannot be replayed when a
+    NonceStore is installed. The first `verify_with_proof` allows; replaying the
+    exact same (challenge, proof) is denied `proof replay detected`."""
+    pytest.importorskip(
+        "cryptography", reason="needs an ed25519 signer to produce the proof"
+    )
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+    root_key, audit_key = keys
+    holder_sk = Ed25519PrivateKey.generate()
+    holder_pk = holder_sk.public_key().public_bytes_raw()  # raw 32 bytes
+    assert len(holder_pk) == 32
+
+    cap = (
+        Issuer.from_key(root_key)
+        .issue("buy")
+        .holder_of_key(holder_pk)  # bind before any caveat (DESIGN.md §11)
+        .caveat('tool == "checkout.purchase"')
+        .build()
+    )
+    assert cap.holder_of_key == list(holder_pk) or bytes(cap.holder_of_key) == holder_pk
+    auditor = Auditor(audit_key)
+    ctx = _ctx("checkout.purchase")
+
+    # Holder derives the default proof-of-possession challenge and signs it.
+    challenge = pop_challenge_for(cap, ctx)
+    proof = holder_sk.sign(bytes(challenge))  # 64-byte ed25519 signature
+    assert len(proof) == 64
+
+    verifier = Verifier(root_key)
+    verifier.with_nonce_store(NonceStore())  # turn on replay protection
+    assert verifier.has_nonce_store()
+
+    # First use of the proof: allowed.
+    first = json.loads(verifier.verify_with_proof(cap, ctx, auditor, challenge, proof))
+    assert first["outcome"]["kind"] == "allowed", first
+
+    # Replaying the identical proof: denied.
+    replay = json.loads(verifier.verify_with_proof(cap, ctx, auditor, challenge, proof))
+    assert replay["outcome"]["kind"] == "denied"
+    assert "replay" in replay["outcome"]["reason"].lower()
+
+
+def test_round_02_wrong_length_proof_is_rejected(keys):
+    """An ed25519 proof must be exactly 64 bytes; a short proof is rejected at
+    the boundary rather than mis-evaluated."""
+    root_key, audit_key = keys
+    cap = Issuer.from_key(root_key).issue("buy").caveat('tool == "x"').build()
+    verifier = Verifier(root_key)
+    with pytest.raises(ValueError, match=r"64 bytes"):
+        verifier.verify_with_proof(cap, _ctx("x"), Auditor(audit_key), b"chal", b"too-short")
+
+
+# ─── Full-surface parity smoke (the bindings are no longer a subset) ──────────
+
+
+def test_python_binding_exposes_full_security_surface():
+    """Guards the B1 goal: the Python package can do replay protection,
+    revocation, and holder-of-key proof — not just verify_with_context."""
+    for name in ("NonceStore", "RevocationList", "Revoker", "pop_challenge_for"):
+        assert name in globals(), f"{name} should be importable from capnagent"
+    for method in (
+        "verify_with_proof",
+        "verify",
+        "with_nonce_store",
+        "with_nonce_ttl_ms",
+        "with_revocation_list",
+        "has_nonce_store",
+        "has_revocation_list",
+    ):
+        assert hasattr(Verifier, method), f"Verifier should expose {method}"

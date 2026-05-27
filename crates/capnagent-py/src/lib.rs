@@ -22,7 +22,11 @@
 
 #![allow(missing_docs)] // Each #[pyclass] is documented via Python __doc__.
 
+use std::sync::Arc;
+
 use capnagent_core as core;
+use core::nonce_store::{InMemoryNonceStore, NonceStore as CoreNonceStore};
+use core::revocation::{RevocationList as CoreRevocationList, Revoker as CoreRevoker};
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
@@ -191,14 +195,25 @@ impl Auditor {
 // Verifier
 // ───────────────────────────────────────────────────────────────────
 
+/// Held as `Option<core::Verifier>` (plus a retained `root_key`) so the
+/// consuming-style builder methods (`with_nonce_store`, `with_revocation_list`,
+/// …) can use the `take()` pattern, exactly like the WASM crate's wrapper. A
+/// failed `with_revocation_list` (bad signature) leaves the handle usable for
+/// retry rather than nulling it.
 #[pyclass]
-struct Verifier(core::Verifier);
+struct Verifier {
+    inner: Option<core::Verifier>,
+    root_key: Vec<u8>,
+}
 
 #[pymethods]
 impl Verifier {
     #[new]
     fn new(key: &[u8]) -> Self {
-        Self(core::Verifier::new(key))
+        Self {
+            inner: Some(core::Verifier::new(key)),
+            root_key: key.to_vec(),
+        }
     }
 
     /// Full pipeline: chain check, caveat evaluation, audit signing.
@@ -221,21 +236,264 @@ impl Verifier {
         auditor: &Auditor,
     ) -> PyResult<String> {
         let _ = py;
-        // Mirror the WASM crate's pattern: deserialise into a local
-        // Deserialize-friendly struct, then convert to the core type.
-        // Keeps capnagent-core free of serde-Deserialize requirements
-        // that don't make sense on the inbound path (Context::env is
-        // a typed map, nowMs is a SystemTime in core, etc).
         let parsed: CtxIn = serde_json::from_str(ctx_json)
             .map_err(|e| PyValueError::new_err(format!("invalid context JSON: {e}")))?;
         let ctx = ctx_in_to_core(parsed);
         let receipt = self
-            .0
+            .inner()?
             .verify_with_context(&cap.0, &ctx, &auditor.0)
             .map_err(|e| PyValueError::new_err(e.to_string()))?;
         serde_json::to_string(&receipt)
             .map_err(|e| PyRuntimeError::new_err(format!("receipt serialization failed: {e}")))
     }
+
+    /// Four-gate pipeline (chain → proof → revocation → caveats) for
+    /// holder-of-key capabilities. `challenge` is arbitrary bytes (use
+    /// [`pop_challenge_for`] for the documented default); `proof` is the raw
+    /// 64-byte ed25519 signature the holder produced over `challenge`.
+    ///
+    /// With a [`NonceStore`] installed via `with_nonce_store`, replays surface
+    /// as `outcome.kind == "denied"` with reason `"proof replay detected"` —
+    /// NOT raised. A proof failure is likewise a denial, not a raise. Chain /
+    /// audit failures DO raise `ValueError`.
+    fn verify_with_proof(
+        &self,
+        cap: &Capability,
+        ctx_json: &str,
+        auditor: &Auditor,
+        challenge: &[u8],
+        proof: &[u8],
+    ) -> PyResult<String> {
+        if proof.len() != 64 {
+            return Err(PyValueError::new_err(format!(
+                "ed25519 proofs are exactly 64 bytes; got {}",
+                proof.len()
+            )));
+        }
+        let parsed: CtxIn = serde_json::from_str(ctx_json)
+            .map_err(|e| PyValueError::new_err(format!("invalid context JSON: {e}")))?;
+        let ctx = ctx_in_to_core(parsed);
+        let receipt = self
+            .inner()?
+            .verify_with_proof(&cap.0, &ctx, &auditor.0, challenge, proof)
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        serde_json::to_string(&receipt)
+            .map_err(|e| PyRuntimeError::new_err(format!("receipt serialization failed: {e}")))
+    }
+
+    /// Chain-only verification (no caveat eval, no audit). Raises `ValueError`
+    /// if the HMAC chain doesn't match — i.e. the token was forged or broadened.
+    fn verify(&self, cap: &Capability) -> PyResult<()> {
+        self.inner()?
+            .verify(&cap.0)
+            .map(|_| ())
+            .map_err(|e| PyValueError::new_err(e.to_string()))
+    }
+
+    /// Install a [`NonceStore`] for replay protection on `verify_with_proof`.
+    /// (No effect on `verify_with_context` — non-hok bearer tokens are reusable
+    /// by design.) Mutates in place.
+    fn with_nonce_store(&mut self, store: &NonceStore) -> PyResult<()> {
+        let inner = self.take_inner()?;
+        let dyn_store: Arc<dyn CoreNonceStore> = Arc::clone(&store.0) as _;
+        self.inner = Some(inner.with_nonce_store(dyn_store));
+        Ok(())
+    }
+
+    /// Override the per-nonce TTL in milliseconds (default 5 minutes). Only
+    /// meaningful with `with_nonce_store`. Mutates in place.
+    fn with_nonce_ttl_ms(&mut self, ttl_ms: u64) -> PyResult<()> {
+        let inner = self.take_inner()?;
+        self.inner = Some(inner.with_nonce_ttl_ms(ttl_ms));
+        Ok(())
+    }
+
+    /// Install a signed [`RevocationList`]. The list's signature is verified
+    /// against this verifier's root key BEFORE installation; a mismatch raises
+    /// `ValueError` and leaves the verifier unchanged (retry-safe). Once
+    /// installed, any capability whose identifier is on the list is denied
+    /// (`"capability revoked: <id>"`) on both verify paths.
+    fn with_revocation_list(&mut self, list: &RevocationList) -> PyResult<()> {
+        // Pre-check the signature against the retained root key, leaving
+        // `self.inner` untouched on failure.
+        list.0.verify_signature(&self.root_key).map_err(|e| {
+            PyValueError::new_err(format!("invalid revocation-list signature: {e}"))
+        })?;
+        let inner = self.take_inner()?;
+        let installed = inner
+            .with_revocation_list(list.0.clone())
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        self.inner = Some(installed);
+        Ok(())
+    }
+
+    /// Whether a revocation list is currently installed.
+    fn has_revocation_list(&self) -> PyResult<bool> {
+        Ok(self.inner()?.has_revocation_list())
+    }
+
+    /// Whether a nonce store is currently installed.
+    fn has_nonce_store(&self) -> PyResult<bool> {
+        Ok(self.inner()?.has_nonce_store())
+    }
+}
+
+impl Verifier {
+    fn inner(&self) -> PyResult<&core::Verifier> {
+        self.inner
+            .as_ref()
+            .ok_or_else(|| PyRuntimeError::new_err("Verifier already consumed by a builder call"))
+    }
+
+    fn take_inner(&mut self) -> PyResult<core::Verifier> {
+        self.inner
+            .take()
+            .ok_or_else(|| PyRuntimeError::new_err("Verifier already consumed by a builder call"))
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────
+// NonceStore — replay-protection backing store
+// ───────────────────────────────────────────────────────────────────
+
+/// In-memory replay-protection store. Construct one and pass it to
+/// `Verifier.with_nonce_store(...)` to enable replay detection on
+/// `verify_with_proof`. Production deployments wanting cross-process /
+/// cross-restart resistance should implement `NonceStore` in Rust against
+/// `capnagent-core` (Redis, Postgres, …).
+#[pyclass]
+struct NonceStore(Arc<InMemoryNonceStore>);
+
+#[pymethods]
+impl NonceStore {
+    #[new]
+    fn new() -> Self {
+        Self(Arc::new(InMemoryNonceStore::new()))
+    }
+
+    #[getter]
+    fn size(&self) -> usize {
+        self.0.len()
+    }
+
+    #[getter]
+    fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    fn clear(&self) {
+        self.0.clear();
+    }
+}
+
+// ───────────────────────────────────────────────────────────────────
+// RevocationList + Revoker — issuer-side capability revocation
+// ───────────────────────────────────────────────────────────────────
+
+/// A point-in-time, HMAC-signed list of revoked capability identifiers.
+/// Minted by `Revoker.publish(...)`, shipped to verifiers, installed via
+/// `Verifier.with_revocation_list(...)`. `serialize()`/`parse()` round-trip
+/// the URL-safe base64 wire form (signature included).
+#[pyclass]
+struct RevocationList(CoreRevocationList);
+
+#[pymethods]
+impl RevocationList {
+    /// Decode a list from its base64 wire form. Raises `ValueError` on
+    /// malformed input.
+    #[staticmethod]
+    fn parse(token: &str) -> PyResult<RevocationList> {
+        use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+        use base64::Engine as _;
+        let bytes = URL_SAFE_NO_PAD
+            .decode(token.as_bytes())
+            .map_err(|e| PyValueError::new_err(format!("base64 decode: {e}")))?;
+        let inner: CoreRevocationList = serde_json::from_slice(&bytes)
+            .map_err(|e| PyValueError::new_err(format!("revocation list parse: {e}")))?;
+        Ok(RevocationList(inner))
+    }
+
+    /// Encode as a URL-safe, unpadded base64 string (round-trips through
+    /// `parse`). The signature is part of the wire format.
+    fn serialize(&self) -> PyResult<String> {
+        use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+        use base64::Engine as _;
+        let bytes = serde_json::to_vec(&self.0)
+            .map_err(|e| PyRuntimeError::new_err(format!("revocation list serialize: {e}")))?;
+        Ok(URL_SAFE_NO_PAD.encode(&bytes))
+    }
+
+    /// Whether `identifier` appears in the list (O(log n); the set is sorted).
+    fn contains(&self, identifier: &str) -> bool {
+        self.0.contains(identifier)
+    }
+
+    #[getter]
+    fn size(&self) -> usize {
+        self.0.len()
+    }
+
+    #[getter]
+    fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    #[getter]
+    fn issued_at_ms(&self) -> u64 {
+        self.0.issued_at_ms
+    }
+}
+
+/// Issuer-side helper for building and signing revocation lists. Construct
+/// from the same root key the `Issuer` uses; `revoke()`/`unrevoke()` mutate
+/// the set; `publish(issued_at_ms)` mints a signed [`RevocationList`].
+#[pyclass]
+struct Revoker(CoreRevoker);
+
+#[pymethods]
+impl Revoker {
+    #[new]
+    fn new(root_key: &[u8]) -> Self {
+        Self(CoreRevoker::new(root_key))
+    }
+
+    /// Mark a capability identifier as revoked. Idempotent.
+    fn revoke(&mut self, identifier: String) {
+        self.0.revoke(identifier);
+    }
+
+    /// Remove an identifier from the revoked set. Returns `True` if it was
+    /// present. Use sparingly.
+    fn unrevoke(&mut self, identifier: &str) -> bool {
+        self.0.unrevoke(identifier)
+    }
+
+    #[getter]
+    fn size(&self) -> usize {
+        self.0.len()
+    }
+
+    #[getter]
+    fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    /// Snapshot the current revoked set into a signed [`RevocationList`].
+    /// `issued_at_ms` should come from a clock authority you trust.
+    fn publish(&self, issued_at_ms: u64) -> RevocationList {
+        RevocationList(self.0.publish(issued_at_ms))
+    }
+}
+
+/// Default proof-of-possession challenge for `Verifier.verify_with_proof`:
+/// SHA-256 of canonical-JSON `{ id, tool, args_hash, now_ms }`. Returns 32
+/// bytes. Both holder and verifier must compute it bytewise-identically.
+#[pyfunction]
+fn pop_challenge_for(cap: &Capability, ctx_json: &str) -> PyResult<Vec<u8>> {
+    let parsed: CtxIn = serde_json::from_str(ctx_json)
+        .map_err(|e| PyValueError::new_err(format!("invalid context JSON: {e}")))?;
+    let ctx = ctx_in_to_core(parsed);
+    Ok(core::pop_challenge_for(&cap.0, &ctx))
 }
 
 // ───────────────────────────────────────────────────────────────────
@@ -282,6 +540,10 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Capability>()?;
     m.add_class::<Auditor>()?;
     m.add_class::<Verifier>()?;
+    m.add_class::<NonceStore>()?;
+    m.add_class::<RevocationList>()?;
+    m.add_class::<Revoker>()?;
+    m.add_function(pyo3::wrap_pyfunction!(pop_challenge_for, m)?)?;
     Ok(())
 }
 

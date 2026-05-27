@@ -142,8 +142,10 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: install maturin + pytest
-        run: pip install maturin pytest
+      - name: install maturin + pytest + cryptography
+        # cryptography provides the ed25519 signer that purple-team round 02
+        # (hok-proof replay) needs to produce a real proof.
+        run: pip install maturin pytest cryptography
 
       - name: build + install the wheel
         run: |

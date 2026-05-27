@@ -171,6 +171,7 @@ dependencies = [
 name = "capnagent-py"
 version = "0.8.0"
 dependencies = [
+ "base64",
  "capnagent-core",
  "pyo3",
  "serde",

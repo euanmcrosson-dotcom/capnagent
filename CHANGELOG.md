@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — `capnagent-py` full API parity (no longer a security subset)
+
+- The Python bindings previously exposed only issue / attenuate /
+  `verify_with_context`. They now expose the **complete** core security
+  surface, matching the WASM crate:
+  - `NonceStore` (replay protection)
+  - `RevocationList` + `Revoker` (issuer-side revocation; signed, wire-portable)
+  - `Verifier.verify_with_proof` (holder-of-key 4-gate pipeline),
+    `verify` (chain-only), `with_nonce_store`, `with_nonce_ttl_ms`,
+    `with_revocation_list`, `has_nonce_store`, `has_revocation_list`
+  - `pop_challenge_for` (default proof-of-possession challenge)
+- Ported purple-team **round 02 (hok-proof replay)** and **round 04
+  (capability revocation)** to pytest — impossible before because the API
+  didn't exist. The `python-tests` CI job installs `cryptography` for the
+  ed25519 proof. 21 Python tests pass.
+
 ### Tests / Docs (post-0.8.0 hardening)
 
 - **`capnagent-wasm` now has direct round-trip tests** (6 `#[wasm_bindgen_test]`

@@ -47,7 +47,11 @@ from capnagent._native import (
     Capability,
     CapabilityBuilder,
     Issuer,
+    NonceStore,
+    RevocationList,
+    Revoker,
     Verifier,
+    pop_challenge_for,
 )
 
 __all__ = [
@@ -55,10 +59,14 @@ __all__ = [
     "Capability",
     "CapabilityBuilder",
     "Issuer",
+    "NonceStore",
+    "RevocationList",
+    "Revoker",
     "Verifier",
+    "pop_challenge_for",
 ]
 
 # Version is set by the maturin build via pyproject.toml; this is a
 # fallback for in-tree usage (e.g. `maturin develop` then `python -c
 # 'import capnagent; print(capnagent.__version__)'`).
-__version__ = "0.7.0"
+__version__ = "0.8.0"
