@@ -142,7 +142,12 @@ fn run_legacy(cli: &Cli) -> Result<()> {
     Ok(())
 }
 
-fn run_issue(from_caveats: &Path, key: Option<&str>, out: Option<&Path>, pretty: bool) -> Result<()> {
+fn run_issue(
+    from_caveats: &Path,
+    key: Option<&str>,
+    out: Option<&Path>,
+    pretty: bool,
+) -> Result<()> {
     let key = resolve_key(key)?;
     let body = fs::read_to_string(from_caveats)
         .with_context(|| format!("read {}", from_caveats.display()))?;
@@ -195,7 +200,10 @@ fn issue_from_caveats(key: &[u8], artifact_json: &str) -> Result<IssueResult> {
         // predicate fails closed rather than producing an unevaluable token.
         for c in &plan.caveats {
             capnagent_core::caveat_dsl::parse(c).map_err(|e| {
-                anyhow!("tool `{}`: caveat `{c}` is not valid caveat DSL: {e}", plan.tool)
+                anyhow!(
+                    "tool `{}`: caveat `{c}` is not valid caveat DSL: {e}",
+                    plan.tool
+                )
             })?;
         }
 
@@ -215,7 +223,9 @@ fn issue_from_caveats(key: &[u8], artifact_json: &str) -> Result<IssueResult> {
 
 fn resolve_key(supplied: Option<&str>) -> Result<Vec<u8>> {
     match supplied {
-        Some(s) => B64.decode(s).context("decode --key/CAPNAGENT_KEY as base64"),
+        Some(s) => B64
+            .decode(s)
+            .context("decode --key/CAPNAGENT_KEY as base64"),
         None => {
             eprintln!(
                 "warning: no --key/CAPNAGENT_KEY supplied; using a public placeholder key.\n\
@@ -277,7 +287,11 @@ mod tests {
         assert_eq!(r.issued[0].tool, "order.refund");
         let parsed =
             capnagent_core::Capability::parse(&r.issued[0].token).expect("token round-trips");
-        let preds: Vec<&str> = parsed.caveats.iter().map(|c| c.predicate.as_str()).collect();
+        let preds: Vec<&str> = parsed
+            .caveats
+            .iter()
+            .map(|c| c.predicate.as_str())
+            .collect();
         assert!(
             preds.iter().any(|p| p.contains("arg.amount <= 100")),
             "issued token should carry the cap caveat; got {preds:?}"
