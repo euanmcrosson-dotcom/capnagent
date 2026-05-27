@@ -51,12 +51,11 @@ alone; together they're defense in depth.
 ```
 
 - **[mcp-recon](https://github.com/euanmcrosson-dotcom/mcp-recon)** —
-  *recon layer*. CLI that enumerates an MCP server's tool surface,
-  fuzzes each tool's schema along six adversarial axes, classifies
-  authority against OWASP LLM Top 10 + MITRE ATLAS, and emits a
-  Markdown threat profile with a recommended capnagent caveat per
-  tool. Run BEFORE you wire a third-party MCP server into your
-  agent.
+  *recon layer*. CLI that live-enumerates an MCP server's tool surface
+  (stdio + HTTP), classifies authority with a deterministic rule engine
+  mapped to OWASP LLM Top 10 / NIST AI RMF / MITRE ATLAS, and emits a
+  `findings.v1` document plus a capnagent-ready caveats artifact. Run
+  BEFORE you wire a third-party MCP server into your agent.
 - **[mcp-guard](https://github.com/euanmcrosson-dotcom/mcp-guard)** —
   *runtime-policy layer*. Drop-in deterministic policy library that
   evaluates each tool call against pattern-derived rules (122 rules
@@ -71,8 +70,8 @@ bound what an agent CAN do at issuance time. Use all three when
 the deployment justifies the layered cost; use just capnagent + a
 runtime check when it doesn't.
 
-As of [mcp-recon v0.2.0](https://github.com/euanmcrosson-dotcom/mcp-recon/releases/tag/v0.2.0)
-the handoff is machine-readable: the new `mcp-recon caveats`
+As of [mcp-recon v0.0.11](https://github.com/euanmcrosson-dotcom/mcp-recon/releases/tag/v0.0.11)
+the handoff is machine-readable: the `mcp-recon caveats`
 subcommand emits a structured `mcp-recon/v0.1/caveats` JSON
 artifact — a list of capnagent-ready issuance plans (tool
 identifier + caveat DSL strings + provenance) keyed off the
