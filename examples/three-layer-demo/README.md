@@ -34,9 +34,9 @@ Expected output:
 ```
 === Three-layer agent security demo ===
 
-Loaded 2 caveats from sample-caveats.json (source: example-fs-and-mail @ https://example.com/mcp).
-  - list_directory  caveat: tool == "list_directory" AND arg.path starts_with "/sandbox/"
-  - send_email      caveat: tool == "send_email" AND arg.to starts_with "alice@"
+Loaded 2 mcp-recon issuance plan(s) from sample-caveats.json (2 scope, 0 deny).
+  - list_directory  [scope] tool == "list_directory" AND arg.path starts_with "/sandbox/"
+  - send_email      [scope] tool == "send_email" AND arg.to starts_with "alice@"
 
 Minted capability token (capnagent: type=Capability).
 Loaded mcp-guardrails policy: 122 rules across 9 attack classes.
@@ -113,4 +113,4 @@ If `demo.py` errors:
 | `ImportError: capnagent` | Stale install | `pip install --upgrade capnagent` |
 | `ImportError: mcp_guard` | Different package name | `pip install mcp-guardrails` (note the package name on PyPI is `mcp-guardrails`; the import name is `mcp_guard`) |
 | `AttributeError: ... Issuer ...` | API drift between capnagent versions | Pin `capnagent==0.7.4` |
-| `KeyError: 'issuance_plans'` | sample-caveats.json hand-edited | Restore from git |
+| `KeyError: 'plans'` / `unexpected schema` | sample-caveats.json hand-edited | Restore from git |

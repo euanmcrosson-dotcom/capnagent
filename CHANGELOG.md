@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed / Tests — three-layer Find→Bind→Guard demo consumes the *real* mcp-recon format, now CI-tested
+
+- The demo's `sample-caveats.json` was a fabricated shape (`$schema`,
+  `issuance_plans`, `caveat_dsl`, `source`) that did **not** match what
+  `mcp-recon caveats` actually emits (`schema`, `plans:[{tool, recommend,
+  caveats[], provenance, note}]`). A "Find→Bind→Guard demo" that can't consume
+  Find's output isn't real — rewrote the sample to the true format and updated
+  `demo.py`'s parsing (`plans`, per-plan `caveats[]` AND-composed within a plan,
+  OR-composed across `scope` plans; `deny` plans skipped).
+- Added `test_three_layer_demo.py` — runs the demo end-to-end (capnagent +
+  mcp-guardrails over the real artifact) and asserts both gates fire
+  independently (capnagent denies the out-of-sandbox path; mcp-guardrails denies
+  the secret-exfil body). CI installs `mcp-guardrails` for it.
+
 ### Added — `@capnagent/core` deterministic disposal (`dispose()` / `using`)
 
 - `Capability` and `Verifier` now expose `dispose()` and `[Symbol.dispose]`, so

@@ -83,11 +83,12 @@ USER_CONTEXT = {"user": {"contacts": ["alice@example.com"]}}
 #  Helpers                                                                     #
 # --------------------------------------------------------------------------- #
 def load_caveats(path: pathlib.Path) -> list[dict]:
-    """Parse a `mcp-recon/v0.1/caveats` JSON artifact."""
+    """Parse a `mcp-recon/v0.1/caveats` JSON artifact (exactly as emitted by
+    `mcp-recon caveats`: `{schema, plans:[{tool, recommend, caveats[], ...}]}`)."""
     data = json.loads(path.read_text())
-    if data.get("$schema") != "mcp-recon/v0.1/caveats":
-        sys.exit(f"unexpected schema: {data.get('$schema')!r}")
-    return data["issuance_plans"]
+    if data.get("schema") != "mcp-recon/v0.1/caveats":
+        sys.exit(f"unexpected schema: {data.get('schema')!r}")
+    return data["plans"]
 
 
 def mint_capability(caveats: list[dict]) -> tuple:
@@ -100,12 +101,20 @@ def mint_capability(caveats: list[dict]) -> tuple:
     seed = b"\x00" * 32
     issuer = Issuer.from_key(seed)
 
-    # Compose the per-tool issuance plans into a single OR-caveat so the
-    # one token authorizes any of the recon-recommended tool/arg shapes.
-    # (Multiple `.caveat()` calls compose with AND semantics, which would
-    # require `tool == "X" AND tool == "Y"` to be true simultaneously --
-    # never satisfiable. OR is the right composition across tools.)
-    combined = " OR ".join(f"({plan['caveat_dsl']})" for plan in caveats)
+    # Compose the per-tool issuance plans into one capability. WITHIN a plan
+    # the caveats AND together (`tool == "X" AND arg.path starts_with "..."`);
+    # ACROSS `scope` plans they OR (one token authorizes any recommended
+    # tool/arg shape). `deny` plans are skipped entirely -- those tools are
+    # never granted. (Chaining `.caveat()` per plan would AND across tools,
+    # which is never satisfiable: `tool == "X" AND tool == "Y"`.)
+    clauses = [
+        "(" + " AND ".join(plan["caveats"]) + ")"
+        for plan in caveats
+        if plan.get("recommend") == "scope" and plan.get("caveats")
+    ]
+    if not clauses:
+        sys.exit("no scope plans in the caveats artifact -- nothing to authorize")
+    combined = " OR ".join(clauses)
     capability = issuer.issue("three-layer-demo-token").caveat(combined).build()
 
     verifier = Verifier(seed)
@@ -141,13 +150,14 @@ def main() -> None:
     # ---------------- mcp-recon layer (loaded from captured JSON) -----------
     caveats_path = pathlib.Path(__file__).parent / "sample-caveats.json"
     caveats = load_caveats(caveats_path)
-    src = json.loads(caveats_path.read_text())["source"]
+    scope = [p for p in caveats if p.get("recommend") == "scope"]
+    deny = [p for p in caveats if p.get("recommend") == "deny"]
     print(
-        f"Loaded {len(caveats)} caveats from sample-caveats.json "
-        f"(source: {src['server_name']} @ {src['server_url']})."
+        f"Loaded {len(caveats)} mcp-recon issuance plan(s) from sample-caveats.json "
+        f"({len(scope)} scope, {len(deny)} deny)."
     )
     for plan in caveats:
-        print(f"  - {plan['tool']:<15} caveat: {plan['caveat_dsl']}")
+        print(f"  - {plan['tool']:<15} [{plan['recommend']}] {' AND '.join(plan['caveats'])}")
 
     # ---------------- capnagent layer ---------------------------------------
     capability, verifier, auditor = mint_capability(caveats)

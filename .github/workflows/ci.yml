@@ -142,10 +142,10 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: install maturin + pytest + cryptography
-        # cryptography provides the ed25519 signer that purple-team round 02
-        # (hok-proof replay) needs to produce a real proof.
-        run: pip install maturin pytest cryptography
+      - name: install maturin + pytest + cryptography + mcp-guardrails
+        # cryptography: ed25519 signer for purple-team round 02 (hok replay).
+        # mcp-guardrails: the Guard layer in the three-layer Find→Bind→Guard demo test.
+        run: pip install maturin pytest cryptography mcp-guardrails
 
       - name: build + install the wheel
         run: |
