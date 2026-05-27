@@ -40,3 +40,10 @@ console_error_panic_hook = { version = "0.1", optional = true }
 [features]
 default = ["console-panic-hook"]
 console-panic-hook = ["dep:console_error_panic_hook"]
+
+[dev-dependencies]
+# Native `cargo test` can't exercise the `#[wasm_bindgen]` methods (constructing
+# a `JsError` aborts off-wasm), so the round-trip tests run on wasm32 via
+# `wasm-pack test --node`. They are gated `#[cfg(target_arch = "wasm32")]`, so a
+# plain `cargo test` simply skips them.
+wasm-bindgen-test = "0.3"

@@ -757,3 +757,122 @@ fn ctx_in_to_core(parsed: CtxIn) -> Result<core::Context, JsError> {
         env: parsed.env.unwrap_or_default(),
     })
 }
+
+#[cfg(all(test, target_arch = "wasm32"))]
+mod wasm_tests {
+    //! Round-trip tests for the WASM boundary, run on wasm32 via
+    //! `wasm-pack test --node`. They exercise the chain-only `Verifier::verify`
+    //! (no `JsValue`), the caveat/attenuate DSL validation, the no-caveat and
+    //! holder-of-key guards, and serialize → parse. They are gated to wasm32
+    //! because constructing a `JsError` aborts off-wasm, so a native
+    //! `cargo test` cannot run them (and simply skips this module).
+    use super::*;
+    use wasm_bindgen_test::wasm_bindgen_test;
+
+    const KEY: &[u8] = b"capnagent-wasm-test-root-key-001";
+
+    /// Unwrap a `Result<_, JsError>` without depending on `JsError: Debug`
+    /// (it doesn't implement it) or tripping clippy's `ok_expect` lint.
+    fn ok<T>(r: Result<T, JsError>, what: &str) -> T {
+        match r {
+            Ok(v) => v,
+            Err(_) => panic!("{what} should have succeeded"),
+        }
+    }
+
+    #[wasm_bindgen_test]
+    fn issue_serialize_parse_verify_round_trip() {
+        let builder = ok(
+            Issuer::from_key(KEY)
+                .issue("buy".into())
+                .caveat("tool == \"buy\"".into()),
+            "valid caveat",
+        );
+        let cap = ok(builder.build(), "build with one caveat");
+        assert_eq!(cap.identifier(), "buy");
+
+        let token = cap.serialize();
+        let parsed = ok(Capability::parse(&token), "token round-trips");
+        assert_eq!(parsed.identifier(), "buy");
+
+        // Chain verification passes with the issuing key …
+        assert!(Verifier::new(KEY).verify(&parsed).is_ok());
+        // … and fails under a different root key (forged / wrong issuer).
+        assert!(Verifier::new(b"a-totally-different-32-byte-key!")
+            .verify(&parsed)
+            .is_err());
+    }
+
+    #[wasm_bindgen_test]
+    fn build_rejects_zero_caveats() {
+        // Angle C.5: a no-caveat token is god-mode authorization.
+        let r = Issuer::from_key(KEY).issue("buy".into()).build();
+        assert!(
+            r.is_err(),
+            "build() must reject a capability with no caveats"
+        );
+    }
+
+    #[wasm_bindgen_test]
+    fn caveat_rejects_unparseable_predicate() {
+        // Angle B.2: an unparseable predicate must throw, not chain silently.
+        let r = Issuer::from_key(KEY)
+            .issue("buy".into())
+            .caveat("%%% not a predicate %%%".into());
+        assert!(r.is_err());
+    }
+
+    #[wasm_bindgen_test]
+    fn attenuate_validates_and_still_verifies() {
+        let cap = ok(
+            ok(
+                Issuer::from_key(KEY)
+                    .issue("buy".into())
+                    .caveat("tool == \"buy\"".into()),
+                "caveat",
+            )
+            .build(),
+            "build",
+        );
+        let token = cap.serialize();
+
+        // An unparseable attenuation predicate is rejected (angle B.2).
+        let parsed = ok(Capability::parse(&token), "parse");
+        assert!(parsed.attenuate("$$$ bogus $$$".into()).is_err());
+
+        // A valid attenuation narrows the cap and still verifies under the key.
+        let parsed = ok(Capability::parse(&token), "parse");
+        let narrowed = ok(
+            parsed.attenuate("arg.amount <= 50_usd".into()),
+            "valid attenuation",
+        );
+        assert!(Verifier::new(KEY).verify(&narrowed).is_ok());
+    }
+
+    #[wasm_bindgen_test]
+    fn holder_of_key_validates_length_and_round_trips() {
+        // Wrong-length pubkey is rejected.
+        let bad = Issuer::from_key(KEY)
+            .issue("buy".into())
+            .holder_of_key(&[1, 2, 3]);
+        assert!(bad.is_err(), "ed25519 keys must be exactly 32 bytes");
+
+        // A 32-byte key binds and survives serialize → parse.
+        let pubkey = [7u8; 32];
+        let builder = ok(
+            Issuer::from_key(KEY)
+                .issue("buy".into())
+                .holder_of_key(&pubkey),
+            "32-byte key accepted",
+        );
+        let builder = ok(builder.caveat("tool == \"buy\"".into()), "caveat");
+        let cap = ok(builder.build(), "build");
+        let parsed = ok(Capability::parse(&cap.serialize()), "parse");
+        assert_eq!(parsed.holder_of_key().as_deref(), Some(&pubkey[..]));
+    }
+
+    #[wasm_bindgen_test]
+    fn parse_rejects_malformed_token() {
+        assert!(Capability::parse("not-a-valid-token").is_err());
+    }
+}

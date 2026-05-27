@@ -1,8 +1,9 @@
 /**
  * Public API for the `@capnagent` package.
  *
- * Wraps the wasm-bindgen-generated classes in `./wasm` (which currently
- * re-exports `./__wasm-stub`) and presents an idiomatic TypeScript surface:
+ * Wraps the wasm-bindgen-generated classes in `./wasm` (which re-exports the
+ * `crates/capnagent-wasm/pkg/` output produced by `npm run build:wasm`) and
+ * presents an idiomatic TypeScript surface:
  *
  *   - All field names are camelCase. snake_case from the WASM boundary is
  *     translated in `./translate` and never leaks past these wrappers.

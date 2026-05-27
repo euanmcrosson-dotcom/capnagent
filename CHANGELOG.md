@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Tests / Docs (post-0.8.0 hardening)
+
+- **`capnagent-wasm` now has direct round-trip tests** (6 `#[wasm_bindgen_test]`
+  cases run via `wasm-pack test --node`, gated `#[cfg(all(test, target_arch =
+  "wasm32"))]` so native `cargo test` skips them): issue → serialize → parse →
+  chain-verify, wrong-key rejection, the no-caveat (C.5) and unparseable-caveat
+  (B.2) guards, holder-of-key length validation, and malformed-token rejection.
+  Wired into CI's `wasm-build` job. Previously the crate had zero direct tests
+  (it was covered only transitively through the TS SDK).
+- Fixed a stale doc comment in `@capnagent`'s `index.ts` that claimed `./wasm`
+  re-exports a `__wasm-stub`; it re-exports the real `crates/capnagent-wasm/pkg/`
+  output from `npm run build:wasm`.
+
 ### Added (v0.8.0 — `capnagent issue --from-caveats`, the Find → Bind CLI handoff)
 
 - **New `capnagent issue --from-caveats <file>` subcommand.** Reads an

@@ -108,6 +108,9 @@ jobs:
       - name: install wasm-pack
         run: cargo install --locked wasm-pack
 
+      - name: wasm-bindgen round-trip tests (capnagent-wasm, node)
+        run: wasm-pack test --node crates/capnagent-wasm
+
       - name: npm ci (workspace root)
         run: npm ci
 
