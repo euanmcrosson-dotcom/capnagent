@@ -135,6 +135,26 @@ function mapWasmError(e: unknown, kind: ErrorKind): never {
 }
 
 // ---------------------------------------------------------------------------
+// Context normalization
+// ---------------------------------------------------------------------------
+
+/**
+ * Fill in `nowMs` from the JS wall clock when the caller omitted it.
+ *
+ * The WASM Context decoder has no usable clock on `wasm32-unknown-unknown`:
+ * its fallback calls `SystemTime::now()`, which panics there ("time not
+ * implemented on this platform") and poisons the module instance. Supplying
+ * the timestamp from JS keeps the documented `Context.nowMs` default
+ * (`Date.now()`) honest and guarantees every context crossing the boundary
+ * carries an explicit time. Applied on every ctx → WASM path
+ * (`verifyWithContext`, `verifyWithProof`, `popChallengeFor`). A caller who
+ * *does* pass `nowMs` is untouched.
+ */
+function withDefaultNow(ctx: Context): Context {
+  return ctx.nowMs === undefined ? { ...ctx, nowMs: Date.now() } : ctx;
+}
+
+// ---------------------------------------------------------------------------
 // Public class wrappers
 // ---------------------------------------------------------------------------
 
@@ -702,7 +722,7 @@ export class Verifier {
   verifyWithContext(cap: Capability, ctx: Context, auditor: Auditor): Receipt {
     ensureReady();
     try {
-      const raw = this._inner.verifyWithContext(cap._inner, ctx, auditor._inner);
+      const raw = this._inner.verifyWithContext(cap._inner, withDefaultNow(ctx), auditor._inner);
       return rawReceiptToReceipt(raw);
     } catch (e) {
       mapWasmError(e, "either");
@@ -745,8 +765,16 @@ export class Verifier {
    * — use {@link verifyWithContext} for that case and apply the
    * documented `_cents` mitigation against the f64-collapse class.
    *
+   * **`nowMs` is NOT auto-defaulted on this path.** Unlike
+   * {@link verifyWithContext}, the JSON string is passed through verbatim to
+   * preserve numeric source text, so the wrapper cannot inject `Date.now()`
+   * without re-serializing (which would defeat the whole point). Your JSON
+   * MUST include a `nowMs` field, or the decoder hits the wasm32
+   * `SystemTime::now()` path and aborts. Include it explicitly, e.g.
+   * `{"nowMs": Date.now(), "caller": "...", "tool": "...", "args": {...}}`.
+   *
    * @param cap capability to verify
-   * @param ctxJson raw JSON text encoding a `Context` (camelCase keys)
+   * @param ctxJson raw JSON text encoding a `Context` (camelCase keys, incl. `nowMs`)
    * @param auditor receipt-signing auditor
    */
   verifyWithContextJson(cap: Capability, ctxJson: string, auditor: Auditor): Receipt {
@@ -784,7 +812,13 @@ export class Verifier {
   ): Receipt {
     ensureReady();
     try {
-      const raw = this._inner.verifyWithProof(cap._inner, ctx, auditor._inner, challenge, proof);
+      const raw = this._inner.verifyWithProof(
+        cap._inner,
+        withDefaultNow(ctx),
+        auditor._inner,
+        challenge,
+        proof,
+      );
       return rawReceiptToReceipt(raw);
     } catch (e) {
       mapWasmError(e, "either");
@@ -822,7 +856,7 @@ export class Verifier {
 export function popChallengeFor(cap: Capability, ctx: Context): Uint8Array {
   ensureReady();
   try {
-    return wasm.popChallengeFor(cap._inner, ctx);
+    return wasm.popChallengeFor(cap._inner, withDefaultNow(ctx));
   } catch (e) {
     mapWasmError(e, "generic");
   }

@@ -373,32 +373,58 @@ describe("Angle 6 — Receipt.timestampMs origin (auditor vs verifier clock)", (
     expect(Date.now()).toBeGreaterThan(FAR_PAST_MS); // sanity
   });
 
-  it("[FINDING] ctx omitted nowMs → SystemTime::now() panics on wasm32 ('time not implemented')", async () => {
-    // FINDING: Although the WASM Context decoder documents "defaults to
-    // Date.now()" for an absent `nowMs`, the Rust core actually calls
-    // `SystemTime::now()` as the fallback (see capnagent-wasm
-    // src/lib.rs::decode_context). On wasm32-unknown-unknown that
-    // panics with "time not implemented on this platform", which the
-    // wasm-bindgen layer surfaces as a CapabilityChainError("unreachable").
-    //
-    // Impact: medium. Operator-facing footgun. The TS doc-comment on
-    // Context.nowMs says it "defaults to Date.now() on the WASM side";
-    // it does NOT — the decoder uses the Rust SystemTime path which
-    // panics. Operators MUST always supply nowMs from JS-side
-    // Date.now() (or another trusted clock authority).
+  it("ctx omitted nowMs defaults to Date.now() — no wasm32 SystemTime panic", async () => {
+    // Was a [FINDING]: omitting `nowMs` hit the Rust `SystemTime::now()`
+    // fallback in the Context decoder, which panics on wasm32 ("time not
+    // implemented") and poisons the instance — despite the Context.nowMs
+    // doc promising a Date.now() default. The wrapper now fills nowMs from
+    // Date.now() before crossing into WASM, so the documented contract
+    // holds and a caller who omits nowMs gets a normal decision, not an abort.
     await init();
     const cap = Issuer.fromKey(ROOT_KEY)
       .issue("ts-default")
       .caveat(`tool == "x"`)
       .caveat("now <= @2099-01-01T00:00:00Z")
       .build();
-    expect(() =>
-      new Verifier(ROOT_KEY).verifyWithContext(
-        cap,
-        { caller: "a", tool: "x", args: {} },
-        new Auditor(AUDIT_KEY),
-      ),
-    ).toThrow(CapabilityChainError);
+    const before = Date.now();
+    const r = new Verifier(ROOT_KEY).verifyWithContext(
+      cap,
+      { caller: "a", tool: "x", args: {} }, // no nowMs supplied
+      new Auditor(AUDIT_KEY),
+    );
+    const after = Date.now();
+    expect(r.outcome.kind).toBe("allowed");
+    // The receipt timestamp came from the injected Date.now(), inside the
+    // call window — proving the default was applied JS-side, not a panic.
+    expect(r.timestampMs).toBeGreaterThanOrEqual(before);
+    expect(r.timestampMs).toBeLessThanOrEqual(after);
+  });
+
+  it("hok path (popChallengeFor + verifyWithProof) also defaults nowMs — no panic", async () => {
+    // The @capnagent/mcp adapter's hok flow is exactly
+    // popChallengeFor -> sign -> verifyWithProof. Both boundary crossings must
+    // default nowMs too, or an hok consumer who omits it aborts mid-flow. The
+    // proof verifies over the explicit challenge bytes, so independent
+    // defaulting on each call is still sound.
+    await init();
+    const publicKey = await ed.getPublicKeyAsync(HOLDER_SECRET);
+    const cap = Issuer.fromKey(ROOT_KEY)
+      .issue("hok-default")
+      .holderOfKey(publicKey)
+      .caveat(`tool == "x"`)
+      .caveat("now <= @2099-01-01T00:00:00Z")
+      .build();
+    const ctx: Context = { caller: "agent:test", tool: "x", args: { n: 1 } }; // no nowMs
+    const challenge = popChallengeFor(cap, ctx); // would panic before the fix
+    const proof = await ed.signAsync(challenge, HOLDER_SECRET);
+    const r = new Verifier(ROOT_KEY).verifyWithProof(
+      cap,
+      ctx,
+      new Auditor(AUDIT_KEY),
+      challenge,
+      proof,
+    );
+    expect(r.outcome.kind).toBe("allowed");
   });
 });
 

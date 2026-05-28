@@ -12,7 +12,15 @@
  * for `now` so JS callers don't need a `SystemTime` shim.
  */
 export interface Context {
-  /** Defaults to `Date.now()` on the WASM side if omitted. */
+  /**
+   * Milliseconds since the Unix epoch, used to evaluate time-based caveats
+   * (`now <= @...`) and to stamp the receipt. If omitted, the wrapper fills it
+   * with `Date.now()` before crossing into WASM (`verifyWithContext`,
+   * `verifyWithProof`, `popChallengeFor`). Pass it explicitly when you need a
+   * specific or trusted clock — e.g. a server-authoritative time rather than
+   * the local one. (The raw-JSON path {@link Verifier.verifyWithContextJson}
+   * does NOT apply this default — include `nowMs` in the JSON yourself.)
+   */
   nowMs?: number;
   caller: string;
   tool: string;

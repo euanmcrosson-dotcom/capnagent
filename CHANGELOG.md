@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — `@capnagent/core` omitting `ctx.nowMs` no longer panics the WASM
+
+- `Context.nowMs` is documented as defaulting to `Date.now()`, but the default
+  was never applied JS-side — an absent `nowMs` fell through to the Rust
+  `SystemTime::now()` path, which on wasm32 panics ("time not implemented") and
+  poisons the module instance. The wrapper now fills `nowMs` from `Date.now()`
+  before crossing into WASM on every context path: `verifyWithContext`,
+  `verifyWithProof`, and `popChallengeFor` (so the `@capnagent/mcp` hok flow is
+  covered too). Callers who pass `nowMs` are untouched. The raw-JSON path
+  `verifyWithContextJson` is the one exception — it passes the JSON verbatim to
+  preserve numeric source text, so its JSON must include `nowMs` (now
+  documented on the method + `Context.nowMs`).
+
 ### Added — `@capnagent/core` + `@capnagent/mcp` are now publishable to npm
 
 - Both TS packages were `private`, unbuilt, and referenced the WASM via a path
