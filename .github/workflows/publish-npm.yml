@@ -16,8 +16,10 @@ name: publish-npm
 #   - Repo secret NPM_TOKEN: an npm automation/granular token with publish
 #     rights to the @capnagent scope.
 #   - Provenance is attached via OIDC (`id-token: write` below + the
-#     `publishConfig.provenance` flag in each package.json); the repo must be
-#     public for npm to accept the provenance attestation.
+#     `--provenance` flag, ON by default; the repo must be public for npm to
+#     accept the attestation). If a first publish is rejected on the provenance
+#     step, re-run from Actions → publish-npm → Run workflow with
+#     provenance=false and publish=true. The token alone is enough to publish.
 
 on:
   push:
@@ -28,6 +30,14 @@ on:
         description: "Actually publish to npm (otherwise dry-run)"
         required: false
         default: "false"
+        type: choice
+        options:
+          - "true"
+          - "false"
+      provenance:
+        description: "Attach build provenance (turn OFF if npm rejects it on a first publish)"
+        required: false
+        default: "true"
         type: choice
         options:
           - "true"
@@ -73,25 +83,33 @@ jobs:
           npm run -w @capnagent/core build
           npm run -w @capnagent/mcp build
 
-      # On a tag push: publish for real. On manual dispatch: dry-run unless
-      # `publish=true` was selected. core first (mcp depends on it).
-      - name: publish @capnagent/core
+      # Compute the publish flags once, used by both steps below.
+      #  - provenance: ON by default (incl. every tag push); a manual dispatch
+      #    can set provenance=false to skip it if npm rejects the attestation
+      #    on a first publish. Controlled purely by the --provenance flag here —
+      #    package.json no longer forces it via publishConfig.
+      #  - dry-run: a manual dispatch is a dry run unless publish=true. Tag
+      #    pushes always publish for real.
+      - name: compute publish flags
+        id: flags
         run: |
+          PROV="--provenance"
           DRY=""
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.publish }}" != "true" ]; then
-            DRY="--dry-run"
-            echo "::notice::Dispatch without publish=true — dry run only."
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            [ "${{ inputs.provenance }}" = "true" ] || PROV=""
+            [ "${{ inputs.publish }}" = "true" ] || DRY="--dry-run"
           fi
-          npm publish -w @capnagent/core --provenance --access public $DRY
+          echo "prov=$PROV" >> "$GITHUB_OUTPUT"
+          echo "dry=$DRY" >> "$GITHUB_OUTPUT"
+          echo "::notice::publish flags — provenance='${PROV:-OFF}' mode='${DRY:-REAL PUBLISH}'"
+
+      # core first — @capnagent/mcp depends on it.
+      - name: publish @capnagent/core
+        run: npm publish -w @capnagent/core --access public ${{ steps.flags.outputs.prov }} ${{ steps.flags.outputs.dry }}
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: publish @capnagent/mcp
-        run: |
-          DRY=""
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.publish }}" != "true" ]; then
-            DRY="--dry-run"
-          fi
-          npm publish -w @capnagent/mcp --provenance --access public $DRY
+        run: npm publish -w @capnagent/mcp --access public ${{ steps.flags.outputs.prov }} ${{ steps.flags.outputs.dry }}
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

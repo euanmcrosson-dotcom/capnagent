@@ -26,9 +26,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     that strips wasm-pack's `wasm/.gitignore: *` (which otherwise silently drops
     the WASM from the tarball) added to both.
 - New `publish-npm.yml` workflow: tag-driven on `npm-v*` (independent of the
-  `v*` and `py-v*` streams), provenance via OIDC, core published before mcp; a
-  manual dispatch defaults to a dry run. CI now also asserts both tarballs are
-  self-contained on every push, so the `.gitignore` trap can't regress.
+  `v*` and `py-v*` streams), core published before mcp; a manual dispatch
+  defaults to a dry run. Provenance (OIDC) is on by default but toggleable via a
+  dispatch input, so a first publish can't be blocked by the attestation step.
+  CI now also asserts both tarballs are self-contained on every push, so the
+  `.gitignore` trap can't regress.
 
 ## [0.9.0] - 2026-05-27
 
